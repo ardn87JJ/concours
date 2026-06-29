@@ -12,8 +12,8 @@ interface AppContextValue extends AppData {
   addCategory: (category: Omit<Category, 'id'>) => void
   updateCategory: (id: string, updates: Partial<Category>) => void
   deleteCategory: (id: string) => void
-  addUser: (user: Omit<User, 'id'>) => void
-  addUsers: (users: Array<Omit<User, 'id'>>) => void
+  addUser: (user: Omit<User, 'id' | 'contestId'>) => void
+  addUsers: (users: Array<Omit<User, 'id' | 'contestId'>>) => void
   updateUser: (id: string, updates: Partial<User>) => void
   deleteUser: (id: string) => void
   sendMessage: (message: Pick<Message, 'recipientId' | 'text'>) => void
@@ -47,6 +47,9 @@ const notify = (userId: string, notification: Omit<Notification, 'id' | 'userId'
   createdAt: new Date().toISOString(),
   read: false,
 })
+
+const getContestUsers = (data: AppData, contestId = data.activeContestId) =>
+  data.users.filter(user => user.contestId === contestId)
 
 const addDeadlineNotifications = (data: AppData): AppData => {
   const today = new Date()
@@ -87,7 +90,11 @@ const loadData = (): AppData => {
       auditLog: parsed.auditLog ?? [],
       users: parsed.users.map(user => {
         const demoUser = demoData.users.find(item => item.id === user.id)
-        const migratedUser = { ...user, managedCategoryIds: user.managedCategoryIds ?? demoUser?.managedCategoryIds ?? [] }
+        const migratedUser = {
+          ...user,
+          contestId: user.contestId ?? demoUser?.contestId ?? parsed.activeContestId,
+          managedCategoryIds: user.managedCategoryIds ?? demoUser?.managedCategoryIds ?? [],
+        }
         if (migratedUser.role !== 'admin' || !migratedUser.passwordHash || migratedUser.passwordVersion === PASSWORD_VERSION) return migratedUser
         const safeUser = { ...migratedUser }
         delete safeUser.passwordHash
@@ -112,10 +119,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const actions = useMemo(() => ({
     addTask: (task: Omit<Task, 'id' | 'createdAt' | 'comments'>) =>
       setData(current => {
-        if (current.users.find(user => user.id === current.currentUserId)?.role !== 'admin') return current
+        if (getContestUsers(current).find(user => user.id === current.currentUserId)?.role !== 'admin') return current
         const id = crypto.randomUUID()
         const title = task.title
-        const adminRecipients = current.users.filter(user => user.role === 'admin' && user.id !== current.currentUserId)
+        const adminRecipients = getContestUsers(current).filter(user => user.role === 'admin' && user.id !== current.currentUserId)
         return {
           ...current,
           tasks: [...current.tasks, {
@@ -137,7 +144,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }),
     updateTask: (id: string, updates: Partial<Task>) =>
       setData(current => {
-        const actor = current.users.find(user => user.id === current.currentUserId)
+        const actor = getContestUsers(current).find(user => user.id === current.currentUserId)
         const existing = current.tasks.find(task => task.id === id)
         if (!existing || !actor) return current
         const isAdmin = actor.role === 'admin'
@@ -158,13 +165,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
               ...existing.assigneeIds,
               ...(updates.status === 'blocked'
                 ? current.users.filter(user =>
-                    user.role === 'admin' ||
-                    (user.role === 'manager' && (user.managedCategoryIds ?? []).includes(existing.categoryId)))
+                    user.contestId === current.activeContestId &&
+                    (user.role === 'admin' ||
+                      (user.role === 'manager' && (user.managedCategoryIds ?? []).includes(existing.categoryId)))
+                  )
                   .map(user => user.id)
                 : []),
             ])].filter(userId => userId !== actor.id)
           : []
-        const adminRecipients = current.users
+        const adminRecipients = getContestUsers(current)
           .filter(user => user.role === 'admin' && user.id !== actor.id && !statusRecipients.includes(user.id))
           .map(user => user.id)
         const events: AuditEvent[] = []
@@ -201,7 +210,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }),
     deleteTask: (id: string) =>
       setData(current => {
-        if (current.users.find(user => user.id === current.currentUserId)?.role !== 'admin') return current
+        if (getContestUsers(current).find(user => user.id === current.currentUserId)?.role !== 'admin') return current
         const task = current.tasks.find(item => item.id === id)
         if (!task) return current
         return {
@@ -209,7 +218,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           tasks: current.tasks.filter(item => item.id !== id),
           notifications: [
             ...current.notifications,
-            ...current.users
+            ...getContestUsers(current)
               .filter(user => user.role === 'admin' && user.id !== current.currentUserId)
               .map(user => notify(user.id, { type: 'status', title: 'Tâche supprimée', text: task.title })),
           ],
@@ -230,7 +239,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const taskRecipients = task?.assigneeIds ?? []
         const recipients = [...new Set([
           ...taskRecipients,
-          ...current.users.filter(user => user.role === 'admin').map(user => user.id),
+          ...getContestUsers(current).filter(user => user.role === 'admin').map(user => user.id),
         ])].filter(userId => userId !== current.currentUserId)
         return {
           ...current,
@@ -252,7 +261,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }),
     addCategory: (category: Omit<Category, 'id'>) =>
       setData(current => {
-        if (current.users.find(user => user.id === current.currentUserId)?.role !== 'admin') return current
+        if (getContestUsers(current).find(user => user.id === current.currentUserId)?.role !== 'admin') return current
         const id = crypto.randomUUID()
         return {
           ...current,
@@ -264,7 +273,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }),
     updateCategory: (id: string, updates: Partial<Category>) =>
       setData(current => {
-        const actor = current.users.find(user => user.id === current.currentUserId)
+        const actor = getContestUsers(current).find(user => user.id === current.currentUserId)
         const category = current.categories.find(item => item.id === id)
         if (actor?.role !== 'admin' || !category) return current
         return {
@@ -277,7 +286,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }),
     deleteCategory: (id: string) =>
       setData(current => {
-        const actor = current.users.find(user => user.id === current.currentUserId)
+        const actor = getContestUsers(current).find(user => user.id === current.currentUserId)
         const category = current.categories.find(item => item.id === id)
         if (actor?.role !== 'admin' || !category) return current
         const remaining = current.categories.filter(item => item.id !== id)
@@ -296,22 +305,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
           })],
         }
       }),
-    addUser: (user: Omit<User, 'id'>) =>
+    addUser: (user: Omit<User, 'id' | 'contestId'>) =>
       setData(current => {
-        if (current.users.find(item => item.id === current.currentUserId)?.role !== 'admin') return current
+        if (getContestUsers(current).find(item => item.id === current.currentUserId)?.role !== 'admin') return current
         const id = crypto.randomUUID()
         return {
           ...current,
-          users: [...current.users, { ...user, id }],
+          users: [...current.users, { ...user, id, contestId: current.activeContestId }],
           auditLog: [...current.auditLog, audit(current.activeContestId, current.currentUserId, {
             action: 'create', entityType: 'user', entityId: id, description: `a créé le profil ${user.role === 'admin' ? 'administrateur ' : ''}« ${user.name} »`,
           })],
         }
       }),
-    addUsers: (users: Array<Omit<User, 'id'>>) =>
+    addUsers: (users: Array<Omit<User, 'id' | 'contestId'>>) =>
       setData(current => {
-        if (current.users.find(user => user.id === current.currentUserId)?.role !== 'admin') return current
-        const additions = users.map(user => ({ ...user, id: crypto.randomUUID() }))
+        if (getContestUsers(current).find(user => user.id === current.currentUserId)?.role !== 'admin') return current
+        const additions = users.map(user => ({ ...user, id: crypto.randomUUID(), contestId: current.activeContestId }))
         return {
           ...current,
           users: [...current.users, ...additions],
@@ -322,9 +331,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }),
     updateUser: (id: string, updates: Partial<User>) =>
       setData(current => {
-        if (current.users.find(user => user.id === current.currentUserId)?.role !== 'admin') return current
+        if (getContestUsers(current).find(user => user.id === current.currentUserId)?.role !== 'admin') return current
         const user = current.users.find(item => item.id === id)
-        if (!user) return current
+        if (!user || user.contestId !== current.activeContestId) return current
         return {
           ...current,
           users: current.users.map(item => item.id === id ? { ...item, ...updates, id: item.id } : item),
@@ -335,10 +344,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }),
     deleteUser: (id: string) =>
       setData(current => {
-        const actor = current.users.find(user => user.id === current.currentUserId)
+        const actor = getContestUsers(current).find(user => user.id === current.currentUserId)
         const user = current.users.find(item => item.id === id)
-        if (actor?.role !== 'admin' || !user || user.id === current.currentUserId) return current
-        const remainingAdmins = current.users.filter(item => item.role === 'admin' && item.id !== id)
+        if (actor?.role !== 'admin' || !user || user.id === current.currentUserId || user.contestId !== current.activeContestId) return current
+        const remainingAdmins = current.users.filter(item => item.contestId === current.activeContestId && item.role === 'admin' && item.id !== id)
         if (user.role === 'admin' && !remainingAdmins.length) return current
         return {
           ...current,
@@ -362,7 +371,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const id = crypto.randomUUID()
         const recipients = recipientId
           ? [recipientId]
-          : current.users.filter(user => user.id !== current.currentUserId).map(user => user.id)
+          : getContestUsers(current).filter(user => user.id !== current.currentUserId).map(user => user.id)
         return {
           ...current,
           messages: [...current.messages, {
@@ -424,7 +433,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     changeAdminPassword: async (userId: string, password: string) => {
       const credential = await createPasswordCredential(password)
       setData(current => {
-        const actor = current.users.find(user => user.id === current.currentUserId)
+        const actor = getContestUsers(current).find(user => user.id === current.currentUserId)
         if (actor?.role !== 'admin' || actor.id !== userId) return current
         const next = {
           ...current,
@@ -437,7 +446,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     addContest: (contest: Omit<Contest, 'id'>) => {
       const id = crypto.randomUUID()
       setData(current => {
-        const currentUser = current.users.find(user => user.id === current.currentUserId)
+        const currentUser = getContestUsers(current).find(user => user.id === current.currentUserId)
         if (currentUser?.role !== 'admin') return current
         return {
           ...current,
@@ -449,26 +458,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
     deleteContest: (id: string) => {
       setData(current => {
-        const currentUser = current.users.find(user => user.id === current.currentUserId)
+        const currentUser = getContestUsers(current).find(user => user.id === current.currentUserId)
         if (currentUser?.role !== 'admin') return current
         if (current.contests.length <= 1 || !current.contests.some(contest => contest.id === id)) return current
         const contests = current.contests.filter(contest => contest.id !== id)
+        const deletedUserIds = current.users.filter(user => user.contestId === id).map(user => user.id)
+        const nextContestId = current.activeContestId === id ? contests[0].id : current.activeContestId
+        const nextUsers = current.users.filter(user => user.contestId === nextContestId)
         return {
           ...current,
           contests,
           tasks: current.tasks.filter(task => task.contestId !== id),
           messages: current.messages.filter(message => message.contestId !== id),
-          activeContestId: current.activeContestId === id ? contests[0].id : current.activeContestId,
+          notifications: current.notifications.filter(notification => !deletedUserIds.includes(notification.userId)),
+          users: current.users.filter(user => user.contestId !== id),
+          activeContestId: nextContestId,
+          currentUserId: nextUsers[0]?.id ?? current.currentUserId,
         }
       })
     },
     setActiveContestId: (id: string) =>
-      setData(current => current.contests.some(contest => contest.id === id)
-        ? { ...current, activeContestId: id }
-        : current),
+      setData(current => {
+        if (!current.contests.some(contest => contest.id === id)) return current
+        const nextUsers = current.users.filter(user => user.contestId === id)
+        return nextUsers.length
+          ? { ...current, activeContestId: id, currentUserId: nextUsers[0].id }
+          : { ...current, activeContestId: id }
+      }),
     setCurrentUserId: (id: string) => setData(current => ({ ...current, currentUserId: id })),
     resetDemo: () =>
-      setData(current => current.users.find(user => user.id === current.currentUserId)?.role === 'admin'
+      setData(current => getContestUsers(current).find(user => user.id === current.currentUserId)?.role === 'admin'
         ? demoData
         : current),
   }), [])

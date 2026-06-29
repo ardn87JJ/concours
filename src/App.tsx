@@ -47,7 +47,8 @@ export default function App() {
   const [messageConversation, setMessageConversation] = useState<string>('general')
   const [messageNavigationKey, setMessageNavigationKey] = useState(0)
   const contest = app.contests.find(item => item.id === app.activeContestId)!
-  const currentUser = app.users.find(user => user.id === app.currentUserId)!
+  const contestUsers = app.users.filter(user => user.contestId === contest.id)
+  const currentUser = contestUsers.find(user => user.id === app.currentUserId) ?? contestUsers[0] ?? app.users.find(user => user.id === app.currentUserId)!
   const authenticatedUser = app.users.find(user => user.id === authenticatedUserId)
   const contestTasks = app.tasks.filter(task => task.contestId === contest.id)
   const completed = contestTasks.filter(task => task.status === 'done').length
@@ -66,6 +67,12 @@ export default function App() {
     const managerAllowed = currentUser.role === 'manager' && view === 'manager-tasks'
     if (!isAdmin && !managerAllowed && view !== 'my-tasks' && view !== 'progress' && view !== 'messages') setView('my-tasks')
   }, [currentUser.role, isAdmin, view])
+
+  useEffect(() => {
+    if (!contestUsers.some(user => user.id === app.currentUserId) && contestUsers[0]) {
+      app.setCurrentUserId(contestUsers[0].id)
+    }
+  }, [app, contestUsers, contest.id])
 
   useEffect(() => {
     if (authenticatedUserId && !authenticatedUser) {
@@ -171,7 +178,7 @@ export default function App() {
               const user = app.users.find(item => item.id === event.target.value)
               if (user?.role !== 'admin') navigate('my-tasks')
             }}>
-              {app.users.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}
+              {contestUsers.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}
               </select>
             </div>}
           <button className="notification-button" onClick={() => setNotificationsOpen(current => !current)}><Bell size={18} />{app.notifications.some(notification => notification.userId === currentUser.id && !notification.read) && <i />}</button>

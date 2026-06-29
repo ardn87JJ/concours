@@ -14,15 +14,15 @@ export const categories: Category[] = [
 ]
 
 export const users: User[] = [
-  { id: 'u1', name: 'Claire Martin', role: 'admin', contact: 'claire@attelage.fr', initials: 'CM', color: '#345f50' },
-  { id: 'u2', name: 'Julien Moreau', role: 'manager', contact: '06 18 25 32 40', initials: 'JM', color: '#93633d', managedCategoryIds: ['cat-terrain', 'cat-logistique'] },
-  { id: 'u3', name: 'Sophie Bernard', role: 'manager', contact: 'sophie@attelage.fr', initials: 'SB', color: '#6b5a97', managedCategoryIds: ['cat-chevaux', 'cat-officiels'] },
-  { id: 'u4', name: 'Thomas Leroy', role: 'manager', contact: '06 22 44 65 81', initials: 'TL', color: '#33758a', managedCategoryIds: ['cat-benevoles', 'cat-securite'] },
-  { id: 'u5', name: 'Émilie Roux', role: 'volunteer', contact: '06 30 11 29 74', initials: 'ER', color: '#b35d71' },
-  { id: 'u6', name: 'Marc Petit', role: 'volunteer', contact: 'marc.petit@mail.fr', initials: 'MP', color: '#667b42' },
-  { id: 'u7', name: 'Nathalie Simon', role: 'volunteer', contact: '06 41 58 69 20', initials: 'NS', color: '#b57532' },
-  { id: 'u8', name: 'Lucas Fontaine', role: 'volunteer', contact: '06 70 32 18 95', initials: 'LF', color: '#476a9d' },
-  { id: 'u9', name: 'Manon Dubois', role: 'volunteer', contact: 'manon.dubois@mail.fr', initials: 'MD', color: '#856b4d' },
+  { id: 'u1', contestId, name: 'Claire Martin', role: 'admin', contact: 'claire@attelage.fr', initials: 'CM', color: '#345f50' },
+  { id: 'u2', contestId, name: 'Julien Moreau', role: 'manager', contact: '06 18 25 32 40', initials: 'JM', color: '#93633d', managedCategoryIds: ['cat-terrain', 'cat-logistique'] },
+  { id: 'u3', contestId, name: 'Sophie Bernard', role: 'manager', contact: 'sophie@attelage.fr', initials: 'SB', color: '#6b5a97', managedCategoryIds: ['cat-chevaux', 'cat-officiels'] },
+  { id: 'u4', contestId, name: 'Thomas Leroy', role: 'manager', contact: '06 22 44 65 81', initials: 'TL', color: '#33758a', managedCategoryIds: ['cat-benevoles', 'cat-securite'] },
+  { id: 'u5', contestId, name: 'Émilie Roux', role: 'volunteer', contact: '06 30 11 29 74', initials: 'ER', color: '#b35d71' },
+  { id: 'u6', contestId, name: 'Marc Petit', role: 'volunteer', contact: 'marc.petit@mail.fr', initials: 'MP', color: '#667b42' },
+  { id: 'u7', contestId, name: 'Nathalie Simon', role: 'volunteer', contact: '06 41 58 69 20', initials: 'NS', color: '#b57532' },
+  { id: 'u8', contestId, name: 'Lucas Fontaine', role: 'volunteer', contact: '06 70 32 18 95', initials: 'LF', color: '#476a9d' },
+  { id: 'u9', contestId, name: 'Manon Dubois', role: 'volunteer', contact: 'manon.dubois@mail.fr', initials: 'MD', color: '#856b4d' },
 ]
 
 const taskSeed: Array<[string, string, TaskStatus, Priority, string, string[]]> = [

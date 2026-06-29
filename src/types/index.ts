@@ -20,6 +20,7 @@ export interface Category {
 
 export interface User {
   id: string
+  contestId: string
   name: string
   role: UserRole
   contact: string

@@ -116,6 +116,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
   }, [data])
 
+  useEffect(() => {
+    const syncFromStorage = () => {
+      setData(loadData())
+    }
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === STORAGE_KEY) syncFromStorage()
+    }
+    window.addEventListener('storage', handleStorage)
+    window.addEventListener('focus', syncFromStorage)
+    document.addEventListener('visibilitychange', syncFromStorage)
+    return () => {
+      window.removeEventListener('storage', handleStorage)
+      window.removeEventListener('focus', syncFromStorage)
+      document.removeEventListener('visibilitychange', syncFromStorage)
+    }
+  }, [])
+
   const actions = useMemo(() => ({
     addTask: (task: Omit<Task, 'id' | 'createdAt' | 'comments'>) =>
       setData(current => {

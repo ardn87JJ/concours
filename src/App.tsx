@@ -3,7 +3,7 @@ import {
   AlertOctagon, BarChart3, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronRight,
   CircleDot, Clock3, Columns3, Download, FileSpreadsheet, Flag, GanttChart,
   ArrowLeft, Bell, Hash, History, LayoutDashboard, ListTodo, LockKeyhole,
-  LogOut, Menu, MessageCircle, Plus, RotateCcw, Search, Send, Settings, ShieldCheck,
+  LogOut, Menu, MessageCircle, Pencil, Plus, RotateCcw, Search, Send, Settings, ShieldCheck,
   Tag, Trash2, Trophy, Upload, UserRound, Users, X,
 } from 'lucide-react'
 import { useApp } from './store/AppContext'
@@ -472,26 +472,56 @@ function GanttView({ tasks, onOpen }: { tasks: Task[]; onOpen: (task: Task) => v
 }
 
 function CategoriesView({ tasks }: { tasks: Task[] }) {
-  const { categories, addCategory } = useApp()
+  const { categories, addCategory, updateCategory, deleteCategory } = useApp()
   const [adding, setAdding] = useState(false)
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null)
   const [name, setName] = useState('')
-  const submit = (e: FormEvent) => { e.preventDefault(); addCategory({ name, color: '#347ca5', icon: '📌' }); setName(''); setAdding(false) }
+  const [color, setColor] = useState('#347ca5')
+  const [icon, setIcon] = useState('📌')
+  const submit = (e: FormEvent) => { e.preventDefault(); addCategory({ name, color, icon }); setName(''); setColor('#347ca5'); setIcon('📌'); setAdding(false) }
+  const startEdit = (category: { id: string; name: string; color: string; icon: string }) => {
+    setEditingCategoryId(category.id)
+    setName(category.name)
+    setColor(category.color)
+    setIcon(category.icon)
+    setAdding(false)
+  }
+  const submitEdit = (e: FormEvent) => {
+    e.preventDefault()
+    if (!editingCategoryId) return
+    updateCategory(editingCategoryId, { name, color, icon })
+    setEditingCategoryId(null)
+    setName('')
+  }
   return <>
-    <div className="section-actions"><span>{categories.length} catégories actives</span><button className="secondary-btn" onClick={() => setAdding(true)}><Plus size={17} /> Nouvelle catégorie</button></div>
-    {adding && <form className="inline-create" onSubmit={submit}><input autoFocus required value={name} onChange={e => setName(e.target.value)} placeholder="Nom de la catégorie" /><button className="primary-btn">Ajouter</button><button type="button" className="icon-btn" onClick={() => setAdding(false)}><X /></button></form>}
+    <div className="section-actions"><span>{categories.length} catégories actives</span><button className="secondary-btn" onClick={() => { setAdding(true); setEditingCategoryId(null) }}><Plus size={17} /> Nouvelle catégorie</button></div>
+    {adding && <form className="inline-create" onSubmit={submit}><input autoFocus required value={name} onChange={e => setName(e.target.value)} placeholder="Nom de la catégorie" /><input value={color} onChange={e => setColor(e.target.value)} placeholder="#347ca5" /><input value={icon} onChange={e => setIcon(e.target.value)} placeholder="📌" /><button className="primary-btn">Ajouter</button><button type="button" className="icon-btn" onClick={() => setAdding(false)}><X /></button></form>}
+    {editingCategoryId && <form className="inline-create" onSubmit={submitEdit}><input autoFocus required value={name} onChange={e => setName(e.target.value)} placeholder="Nom de la catégorie" /><input required value={color} onChange={e => setColor(e.target.value)} placeholder="#347ca5" /><input required value={icon} onChange={e => setIcon(e.target.value)} placeholder="📌" /><button className="primary-btn">Enregistrer</button><button type="button" className="icon-btn" onClick={() => setEditingCategoryId(null)}><X /></button></form>}
     <div className="categories-grid">{categories.map(category => {
       const scoped = tasks.filter(task => task.categoryId === category.id)
       const done = scoped.filter(task => task.status === 'done').length
       const value = scoped.length ? Math.round(done / scoped.length * 100) : 0
-      return <article className="category-card" key={category.id}><div className="category-card-icon" style={{ background: `${category.color}18` }}>{category.icon}</div><div><h2>{category.name}</h2><p>{scoped.length} tâches · {done} terminées</p></div><strong style={{ color: category.color }}>{value}%</strong><div className="progress-track"><span style={{ width: `${value}%`, background: category.color }} /></div></article>
+      return <article className="category-card" key={category.id}>
+        <div className="category-card-header">
+          <div className="category-card-icon" style={{ background: `${category.color}18` }}>{category.icon}</div>
+          <div className="category-card-actions">
+            <button type="button" className="icon-btn" onClick={() => startEdit(category)} title="Modifier la catégorie"><Pencil size={15} /></button>
+            <button type="button" className="icon-btn danger" onClick={() => {
+              if (window.confirm(`Supprimer la catégorie « ${category.name} » ? Les tâches seront réaffectées à la première catégorie restante.`)) deleteCategory(category.id)
+            }} title="Supprimer la catégorie"><Trash2 size={15} /></button>
+          </div>
+        </div>
+        <div><h2>{category.name}</h2><p>{scoped.length} tâches · {done} terminées</p></div><strong style={{ color: category.color }}>{value}%</strong><div className="progress-track"><span style={{ width: `${value}%`, background: category.color }} /></div>
+      </article>
     })}</div>
   </>
 }
 
 function UsersView({ tasks }: { tasks: Task[] }) {
-  const { users, categories, addUser, addUsers, updateUser } = useApp()
+  const { users, categories, addUser, addUsers, updateUser, deleteUser } = useApp()
   const [adding, setAdding] = useState(false)
   const [importing, setImporting] = useState(false)
+  const [editingUserId, setEditingUserId] = useState<string | null>(null)
   const [csvMembers, setCsvMembers] = useState<CsvMember[]>([])
   const [csvErrors, setCsvErrors] = useState<string[]>([])
   const [importMessage, setImportMessage] = useState('')
@@ -499,10 +529,38 @@ function UsersView({ tasks }: { tasks: Task[] }) {
   const [contact, setContact] = useState('')
   const [role, setRole] = useState<UserRole>('volunteer')
   const [managedCategoryIds, setManagedCategoryIds] = useState<string[]>([])
+  const [color, setColor] = useState('#476a9d')
   const submit = (e: FormEvent) => {
     e.preventDefault()
-    addUser({ name, contact, role, managedCategoryIds: role === 'manager' ? managedCategoryIds : [], initials: name.split(' ').map(word => word[0]).join('').slice(0, 2).toUpperCase(), color: '#476a9d' })
-    setName(''); setContact(''); setManagedCategoryIds([]); setAdding(false)
+    addUser({ name, contact, role, managedCategoryIds: role === 'manager' ? managedCategoryIds : [], initials: name.split(' ').map(word => word[0]).join('').slice(0, 2).toUpperCase(), color })
+    setName(''); setContact(''); setManagedCategoryIds([]); setColor('#476a9d'); setAdding(false)
+  }
+
+  const startEdit = (user: User) => {
+    setEditingUserId(user.id)
+    setAdding(false)
+    setName(user.name)
+    setContact(user.contact)
+    setRole(user.role)
+    setColor(user.color)
+    setManagedCategoryIds(user.managedCategoryIds ?? [])
+  }
+
+  const submitEdit = (e: FormEvent) => {
+    e.preventDefault()
+    if (!editingUserId) return
+    updateUser(editingUserId, {
+      name,
+      contact,
+      role,
+      color,
+      initials: name.split(' ').map(word => word[0]).join('').slice(0, 2).toUpperCase(),
+      managedCategoryIds: role === 'manager' ? managedCategoryIds : [],
+    })
+    setEditingUserId(null)
+    setName('')
+    setContact('')
+    setManagedCategoryIds([])
   }
 
   const readCsv = async (file?: File) => {
@@ -545,7 +603,7 @@ function UsersView({ tasks }: { tasks: Task[] }) {
   }
 
   return <>
-    <div className="section-actions"><span>{users.length} membres dans l’équipe</span><div><button className="secondary-btn" onClick={() => setImporting(current => !current)}><Upload size={17} /> Importer un CSV</button><button className="secondary-btn" onClick={() => setAdding(true)}><Plus size={17} /> Ajouter un membre</button></div></div>
+    <div className="section-actions"><span>{users.length} membres dans l’équipe</span><div><button className="secondary-btn" onClick={() => setImporting(current => !current)}><Upload size={17} /> Importer un CSV</button><button className="secondary-btn" onClick={() => { setAdding(true); setEditingUserId(null) }}><Plus size={17} /> Ajouter un membre</button></div></div>
     {importing && <section className="panel csv-import">
       <header><div><FileSpreadsheet size={22} /><span><strong>Import de membres</strong><small>Fichier CSV encodé en UTF-8, séparé par un point-virgule ou une virgule.</small></span></div><button className="icon-btn" onClick={() => setImporting(false)}><X /></button></header>
       <div className="csv-format">
@@ -559,11 +617,25 @@ function UsersView({ tasks }: { tasks: Task[] }) {
       {csvMembers.length > 0 && <div className="csv-preview"><div><strong>{csvMembers.length} membre{csvMembers.length > 1 ? 's' : ''} prêt{csvMembers.length > 1 ? 's' : ''} à importer</strong><button className="primary-btn" onClick={importMembers}>Confirmer l’import</button></div>{csvMembers.slice(0, 5).map(member => <span key={`${member.name}-${member.contact}`}><b>{member.name}</b><em>{roleLabels[member.role]}</em><small>{member.contact}</small></span>)}</div>}
       {importMessage && <div className="import-success"><CheckCircle2 size={17} />{importMessage}</div>}
     </section>}
-    {adding && <form className="inline-create user-create" onSubmit={submit}><input autoFocus required value={name} onChange={e => setName(e.target.value)} placeholder="Nom complet" /><input required value={contact} onChange={e => setContact(e.target.value)} placeholder="Email ou téléphone" /><select value={role} onChange={e => setRole(e.target.value as UserRole)}>{Object.entries(roleLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select>{role === 'manager' && <div className="new-manager-categories"><span>Catégories gérées</span>{categories.map(category => <label key={category.id}><input type="checkbox" checked={managedCategoryIds.includes(category.id)} onChange={() => setManagedCategoryIds(current => current.includes(category.id) ? current.filter(id => id !== category.id) : [...current, category.id])} />{category.name}</label>)}</div>}<button className="primary-btn">Ajouter</button><button type="button" className="icon-btn" onClick={() => setAdding(false)}><X /></button></form>}
+    {adding && <form className="inline-create user-create" onSubmit={submit}><input autoFocus required value={name} onChange={e => setName(e.target.value)} placeholder="Nom complet" /><input required value={contact} onChange={e => setContact(e.target.value)} placeholder="Email ou téléphone" /><input value={color} onChange={e => setColor(e.target.value)} placeholder="#476a9d" /><select value={role} onChange={e => setRole(e.target.value as UserRole)}>{Object.entries(roleLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select>{role === 'manager' && <div className="new-manager-categories"><span>Catégories gérées</span>{categories.map(category => <label key={category.id}><input type="checkbox" checked={managedCategoryIds.includes(category.id)} onChange={() => setManagedCategoryIds(current => current.includes(category.id) ? current.filter(id => id !== category.id) : [...current, category.id])} />{category.name}</label>)}</div>}<button className="primary-btn">Ajouter</button><button type="button" className="icon-btn" onClick={() => setAdding(false)}><X /></button></form>}
+    {editingUserId && <form className="inline-create user-create" onSubmit={submitEdit}><input autoFocus required value={name} onChange={e => setName(e.target.value)} placeholder="Nom complet" /><input required value={contact} onChange={e => setContact(e.target.value)} placeholder="Email ou téléphone" /><input value={color} onChange={e => setColor(e.target.value)} placeholder="#476a9d" /><select value={role} onChange={e => setRole(e.target.value as UserRole)}>{Object.entries(roleLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select>{role === 'manager' && <div className="new-manager-categories"><span>Catégories gérées</span>{categories.map(category => <label key={category.id}><input type="checkbox" checked={managedCategoryIds.includes(category.id)} onChange={() => setManagedCategoryIds(current => current.includes(category.id) ? current.filter(id => id !== category.id) : [...current, category.id])} />{category.name}</label>)}</div>}<button className="primary-btn">Enregistrer</button><button type="button" className="icon-btn" onClick={() => setEditingUserId(null)}><X /></button></form>}
     <div className="users-grid">{users.map(user => {
       const assigned = tasks.filter(task => task.assigneeIds.includes(user.id))
       const done = assigned.filter(task => task.status === 'done').length
-      return <article className="user-card" key={user.id}><Avatar user={user} size="lg" /><div><h2>{user.name}</h2><span>{roleLabels[user.role]}</span><p>{user.contact}</p></div>{user.role === 'manager' && <div className="manager-category-assignment"><strong>Catégories responsables</strong><div>{categories.map(category => <button key={category.id} className={(user.managedCategoryIds ?? []).includes(category.id) ? 'selected' : ''} onClick={() => updateUser(user.id, { managedCategoryIds: (user.managedCategoryIds ?? []).includes(category.id) ? (user.managedCategoryIds ?? []).filter(id => id !== category.id) : [...(user.managedCategoryIds ?? []), category.id] })}>{category.icon} {category.name}</button>)}</div></div>}<div className="user-stats"><strong>{assigned.length}<small>tâches</small></strong><strong>{done}<small>terminées</small></strong></div><ProgressBar value={assigned.length ? Math.round(done / assigned.length * 100) : 0} compact /></article>
+      return <article className="user-card" key={user.id}>
+        <div className="user-card-top">
+          <Avatar user={user} size="lg" />
+          <div className="user-card-actions">
+            <button type="button" className="icon-btn" onClick={() => startEdit(user)} title="Modifier le profil"><Pencil size={15} /></button>
+            <button type="button" className="icon-btn danger" onClick={() => {
+              if (window.confirm(`Supprimer le profil « ${user.name} » ?`)) deleteUser(user.id)
+            }} title="Supprimer le profil"><Trash2 size={15} /></button>
+          </div>
+        </div>
+        <div><h2>{user.name}</h2><span>{roleLabels[user.role]}</span><p>{user.contact}</p></div>
+        {user.role === 'manager' && <div className="manager-category-assignment"><strong>Catégories responsables</strong><div>{categories.map(category => <button key={category.id} className={(user.managedCategoryIds ?? []).includes(category.id) ? 'selected' : ''} onClick={() => updateUser(user.id, { managedCategoryIds: (user.managedCategoryIds ?? []).includes(category.id) ? (user.managedCategoryIds ?? []).filter(id => id !== category.id) : [...(user.managedCategoryIds ?? []), category.id] })}>{category.icon} {category.name}</button>)}</div></div>}
+        <div className="user-stats"><strong>{assigned.length}<small>tâches</small></strong><strong>{done}<small>terminées</small></strong></div><ProgressBar value={assigned.length ? Math.round(done / assigned.length * 100) : 0} compact />
+      </article>
     })}</div>
   </>
 }

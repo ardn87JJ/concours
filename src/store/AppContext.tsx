@@ -10,9 +10,12 @@ interface AppContextValue extends AppData {
   deleteTask: (id: string) => void
   addComment: (taskId: string, text: string) => void
   addCategory: (category: Omit<Category, 'id'>) => void
+  updateCategory: (id: string, updates: Partial<Category>) => void
+  deleteCategory: (id: string) => void
   addUser: (user: Omit<User, 'id'>) => void
   addUsers: (users: Array<Omit<User, 'id'>>) => void
   updateUser: (id: string, updates: Partial<User>) => void
+  deleteUser: (id: string) => void
   sendMessage: (message: Pick<Message, 'recipientId' | 'text'>) => void
   markConversationRead: (participantId?: string) => void
   markNotificationRead: (id: string) => void
@@ -259,6 +262,40 @@ export function AppProvider({ children }: { children: ReactNode }) {
           })],
         }
       }),
+    updateCategory: (id: string, updates: Partial<Category>) =>
+      setData(current => {
+        const actor = current.users.find(user => user.id === current.currentUserId)
+        const category = current.categories.find(item => item.id === id)
+        if (actor?.role !== 'admin' || !category) return current
+        return {
+          ...current,
+          categories: current.categories.map(item => item.id === id ? { ...item, ...updates, id: item.id } : item),
+          auditLog: [...current.auditLog, audit(current.activeContestId, current.currentUserId, {
+            action: 'update', entityType: 'category', entityId: id, description: `a modifié la catégorie « ${category.name} »`,
+          })],
+        }
+      }),
+    deleteCategory: (id: string) =>
+      setData(current => {
+        const actor = current.users.find(user => user.id === current.currentUserId)
+        const category = current.categories.find(item => item.id === id)
+        if (actor?.role !== 'admin' || !category) return current
+        const remaining = current.categories.filter(item => item.id !== id)
+        if (!remaining.length) return current
+        const fallbackCategoryId = remaining[0].id
+        return {
+          ...current,
+          categories: remaining,
+          tasks: current.tasks.map(task => task.categoryId === id ? { ...task, categoryId: fallbackCategoryId } : task),
+          users: current.users.map(user => ({
+            ...user,
+            managedCategoryIds: (user.managedCategoryIds ?? []).filter(categoryId => categoryId !== id),
+          })),
+          auditLog: [...current.auditLog, audit(current.activeContestId, current.currentUserId, {
+            action: 'delete', entityType: 'category', entityId: id, description: `a supprimé la catégorie « ${category.name} »`,
+          })],
+        }
+      }),
     addUser: (user: Omit<User, 'id'>) =>
       setData(current => {
         if (current.users.find(item => item.id === current.currentUserId)?.role !== 'admin') return current
@@ -293,6 +330,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
           users: current.users.map(item => item.id === id ? { ...item, ...updates, id: item.id } : item),
           auditLog: [...current.auditLog, audit(current.activeContestId, current.currentUserId, {
             action: 'update', entityType: 'user', entityId: id, description: `a modifié le profil « ${user.name} »`,
+          })],
+        }
+      }),
+    deleteUser: (id: string) =>
+      setData(current => {
+        const actor = current.users.find(user => user.id === current.currentUserId)
+        const user = current.users.find(item => item.id === id)
+        if (actor?.role !== 'admin' || !user || user.id === current.currentUserId) return current
+        const remainingAdmins = current.users.filter(item => item.role === 'admin' && item.id !== id)
+        if (user.role === 'admin' && !remainingAdmins.length) return current
+        return {
+          ...current,
+          users: current.users.filter(item => item.id !== id),
+          tasks: current.tasks.map(task => ({
+            ...task,
+            assigneeIds: task.assigneeIds.filter(userId => userId !== id),
+          })),
+          messages: current.messages.map(message => ({
+            ...message,
+            readByIds: message.readByIds.filter(userId => userId !== id),
+          })),
+          notifications: current.notifications.filter(notification => notification.userId !== id),
+          auditLog: [...current.auditLog, audit(current.activeContestId, current.currentUserId, {
+            action: 'delete', entityType: 'user', entityId: id, description: `a supprimé le profil « ${user.name} »`,
           })],
         }
       }),

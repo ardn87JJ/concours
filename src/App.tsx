@@ -127,7 +127,7 @@ export default function App() {
   }
 
   if (!authenticatedUserId || !authenticatedUser) {
-    return <LoginScreen users={app.users} onLogin={login} onInitializePassword={app.initializeAdminPassword} />
+    return <LoginScreen users={contestUsers} onLogin={login} onInitializePassword={app.initializeAdminPassword} />
   }
 
   return (

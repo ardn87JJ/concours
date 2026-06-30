@@ -7,9 +7,15 @@ coordination simple, lisible sur ordinateur et mobile. L'outil doit réduire les
 tableurs et échanges dispersés en donnant à chacun ses actions, échéances et
 interlocuteurs.
 
-La version actuelle est une V1 de démonstration utilisable dans un seul
-navigateur. Son architecture prépare le remplacement du stockage local par une
-API, mais cette migration n'est pas encore réalisée.
+La version actuelle est une V1 de démonstration dont les vues utilisent encore
+le stockage du navigateur. La migration vers Supabase est engagée : projet
+hébergé configuré, schéma PostgreSQL versionné et déployé, client préparé, sans
+basculement de la source de données à ce stade.
+
+Le travail en cours a déjà basculé l'écran de connexion et le chargement du
+snapshot métier sur Supabase après authentification. Les écritures métier du
+front restent à migrer complètement ; tant que ce point n'est pas terminé, le
+mode local doit rester disponible comme filet de sécurité.
 
 ## Utilisateurs et besoins
 
@@ -53,6 +59,21 @@ Le bénévole consulte ses tâches dans une interface simplifiée, met leur stat
 - droits réappliqués dans les actions du store, pas seulement masqués dans
   l'interface ;
 - publication statique avec GitHub Actions et GitHub Pages ;
+- Supabase retenu pour PostgreSQL, Auth, Data API et Realtime ;
+- comptes Auth basés sur un identifiant email technique invisible ; les
+  utilisateurs continuent à sélectionner leur profil et ne saisissent pas
+  d'email ;
+- l'écran de connexion lit l'annuaire public Supabase ; les profils listés
+  dépendent du concours sélectionné ;
+- schéma géré par migrations dans `supabase/migrations` ;
+- RLS obligatoire sur toutes les tables exposées ; aucune politique ouverte
+  avant validation de la matrice d'accès ;
+- annuaire de connexion public limité aux concours et aux noms, rôles,
+  initiales et couleurs des profils ; les contacts restent protégés ;
+- bootstrap du premier concours autorisé uniquement tant que la base ne
+  contient aucun concours ;
+- création et réinitialisation des comptes membres réservées à une Edge
+  Function qui vérifie le rôle administrateur ;
 - absence volontaire de dépendance UI ou de framework CSS.
 
 ## Règles métier observées
@@ -90,7 +111,10 @@ Le bénévole consulte ses tâches dans une interface simplifiée, met leur stat
 
 ## Contraintes actuelles
 
-- aucune API, base de données, synchronisation distante ou gestion de compte ;
+- aucune synchronisation distante active tant que les vues utilisent
+  `localStorage` ;
+- le mode Supabase charge désormais les données distantes après connexion,
+  mais les mutations front à distance restent en progression ;
 - aucune confidentialité réelle des messages ou données face à un utilisateur
   ayant accès au navigateur ;
 - aucune récupération de mot de passe ;
@@ -134,6 +158,10 @@ inaccessibles jusqu'à sa définition par un administrateur.
 Les administrateurs peuvent lire les conversations directes. Ce choix reste à
 confirmer avant tout usage réel.
 
+Dans Supabase, cette supervision est explicitement autorisée par une politique
+RLS sur `messages`. Toute évolution de cette règle exige une migration et une
+validation métier.
+
 ### Source de vérité des artefacts
 
 Le workflow reconstruit `dist/`, mais le dépôt suit également ses fichiers.
@@ -151,7 +179,8 @@ restent suivis ou sont retirés du suivi dans une intervention dédiée.
 - les données de démonstration servant de scénario métier ;
 - la stratégie GitHub Pages et la valeur `base` de Vite ;
 - la séparation entre vue simplifiée et vue administrateur ;
-- le passage à une API, une base de données ou un fournisseur d'identité.
+- toute modification majeure de la stratégie Supabase, du schéma ou du
+  fournisseur d'identité déjà validé.
 
 ## Principes de contribution
 

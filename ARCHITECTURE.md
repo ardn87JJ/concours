@@ -14,11 +14,12 @@ useApp() / AppContext
         ↓
 Règles d'autorisation + mutations immuables
         ↓
-localStorage du navigateur
+localStorage du navigateur ou snapshot Supabase selon le backend activé
 ```
 
-Il n'existe actuellement ni routeur, ni serveur applicatif, ni API, ni base de
-données. La navigation repose sur un état React `view`.
+La navigation repose sur un état React `view`. Le mode local continue d'utiliser
+`AppContext` et `localStorage`, tandis que le mode Supabase charge l'annuaire
+public, la session Auth et le snapshot métier après connexion.
 
 ## Structure du dépôt
 
@@ -34,12 +35,18 @@ données. La navigation repose sur un état React `view`.
 | `src/lib/format.ts` | libellés, dates, retards et délais |
 | `src/lib/calendar.ts` | génération locale des événements iCalendar `.ics` |
 | `src/lib/password.ts` | dérivation et vérification PBKDF2 |
+| `src/lib/supabase.ts` | initialisation conditionnelle du client Supabase |
+| `src/lib/supabaseApi.ts` | annuaire, Auth et appels aux Edge Functions |
+| `src/lib/supabaseData.ts` | chargement du snapshot métier distant |
 | `src/styles.css` | design global et responsive |
 | `index.html` | point d'entrée HTML Vite |
 | `vite.config.ts` | configuration Vite et base relative |
 | `eslint.config.js` | règles ESLint TypeScript/React |
 | `tsconfig*.json` | compilation TypeScript par références |
 | `.github/workflows/deploy.yml` | build et publication GitHub Pages |
+| `supabase/migrations/` | migrations PostgreSQL versionnées |
+| `supabase/config.toml` | configuration Supabase locale et Auth |
+| `supabase/functions/` | bootstrap et gestion sécurisée des comptes membres |
 | `dist/` | sortie générée de production, actuellement suivie par Git |
 
 Les fichiers `vite.config.js`, `vite.config.d.ts`, `*.tsbuildinfo` et le contenu
@@ -77,18 +84,23 @@ La relation catégorie-concours manque dans le modèle actuel.
 
 ## État et persistance
 
-`AppProvider` initialise l'état avec `loadData()` :
+`AppProvider` initialise l'état avec `loadData()` en mode local, ou avec un
+chargement Supabase après authentification :
 
-1. lecture de `attelage-pilot-data-v1` dans `localStorage` ;
+1. lecture de `attelage-pilot-data-v1` dans `localStorage` en mode local ;
 2. utilisation des données de démonstration si aucune donnée n'existe ;
-3. migration légère des messages, notifications, événements, utilisateurs et
-   versions de mot de passe ;
-4. ajout des notifications d'échéance ;
-5. exposition des données et actions via `useApp()`.
+3. chargement des concours, profils, catégories, tâches, messages,
+   notifications et audit depuis Supabase après connexion Auth ;
+4. migration légère des messages, notifications, événements, utilisateurs et
+   versions de mot de passe en mode local ;
+5. ajout des notifications d'échéance en mode local ;
+6. exposition des données et actions via `useApp()`.
 
 Chaque changement de l'état sérialise l'ensemble de `AppData`. Des écouteurs
 rechargent le stockage sur modification depuis un autre onglet, focus de la
-fenêtre ou changement de visibilité.
+fenêtre ou changement de visibilité en mode local. Le mode Supabase conserve la
+sélection courante dans `sessionStorage` et recharge le snapshot métier après
+authentification.
 
 Limites :
 
@@ -97,6 +109,60 @@ Limites :
 - aucune validation de schéma ou migration versionnée de l'ensemble des données ;
 - un JSON invalide réinitialise silencieusement sur les données de démonstration ;
 - capacité et durée de vie dépendantes du navigateur.
+
+## Schéma Supabase déployé
+
+La migration initiale appliquée au projet lié crée :
+
+- `contests`, `profiles` et `contest_members` ;
+- `categories` et `manager_categories` ;
+- `tasks`, `task_assignees` et `comments` ;
+- `messages` et `message_reads` ;
+- `notifications` et `audit_events`.
+
+Les identifiants sont des UUID. Les relations composites garantissent qu'une
+tâche, une catégorie, une assignation, un commentaire ou un message reste dans
+son concours. Les statuts, priorités, rôles et types d'événements utilisent des
+enums PostgreSQL. Des index couvrent les échéances, conversations,
+notifications et journaux.
+
+Toutes les tables ont RLS activé. La migration initiale révoque les privilèges
+des rôles `anon` et `authenticated` et réserve l'accès à `service_role`. Les
+politiques déployées ensuite ouvrent uniquement les opérations autorisées aux
+membres authentifiés.
+
+### Matrice RLS déployée
+
+- visiteur anonyme : exécution des deux fonctions d'annuaire de connexion
+  uniquement ;
+- membre authentifié : lecture des données de ses concours ;
+- bénévole assigné : modification limitée au statut de sa tâche par une
+  politique et un trigger de contrôle ;
+- responsable : modification des tâches et assignations de ses catégories ;
+- administrateur : gestion des concours, catégories, tâches et supervision des
+  échanges de son concours ;
+- notifications : lecture du propriétaire ou de l'administrateur, marquage lu
+  par le propriétaire ;
+- audit : lecture administrateur et insertion par l'acteur concerné.
+
+### Edge Functions
+
+- `bootstrap-admin` crée une seule fois le premier compte Auth, son profil, son
+  concours, son appartenance administrateur et les catégories initiales ;
+- `manage-member` exige une session administrateur du concours pour créer un
+  compte ou réinitialiser son mot de passe ;
+- les identifiants Auth utilisent une adresse technique dérivée de l'UUID,
+  invisible dans l'interface ;
+- les clés secrètes restent exclusivement dans l'environnement Supabase.
+
+### Transition frontend
+
+`src/lib/supabaseApi.ts` fournit l'annuaire, la connexion par profil, le
+bootstrap, la déconnexion, la gestion des membres et le changement de mot de
+passe. `src/lib/supabaseData.ts` charge le snapshot métier distant lorsque
+l'utilisateur est authentifié. `VITE_DATA_BACKEND` peut basculer vers
+`supabase` pour activer ce chemin ; le maintien d'un mode local reste
+nécessaire tant que toutes les mutations n'ont pas été raccordées.
 
 ## Flux d'une mutation
 

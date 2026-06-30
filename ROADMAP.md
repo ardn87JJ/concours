@@ -14,6 +14,16 @@ doivent être validées avant toute évolution fonctionnelle.
 - [x] interface responsive ;
 - [x] lint et build configurés ;
 - [x] déploiement GitHub Pages.
+- [x] projet Supabase créé et lié ;
+- [x] schéma PostgreSQL initial versionné ;
+- [x] migration initiale appliquée sur le projet Supabase distant ;
+- [x] politiques RLS par rôle et concours déployées ;
+- [x] annuaire public limité pour l'écran de connexion ;
+- [x] Edge Function de bootstrap déployée ;
+- [x] Edge Function de création/réinitialisation des membres déployée ;
+- [x] couche frontend Supabase pour Auth et gestion des comptes ;
+- [x] RLS fermé et index du modèle métier ;
+- [x] client Supabase préparé ;
 
 ### Organisation
 
@@ -55,8 +65,8 @@ doivent être validées avant toute évolution fonctionnelle.
 
 - [~] multi-concours : écrans et identifiants présents, isolation des catégories,
   profils, notifications et parcours de création incomplète ;
-- [~] authentification : tous les profils ont un mot de passe local, mais
-  l'authentification reste exécutée exclusivement dans le navigateur ;
+- [~] authentification : écran de connexion et session Supabase branchés, mais
+  la synchronisation des écritures métier n'est pas encore complète ;
 - [~] migrations : quelques valeurs par défaut et version de mot de passe,
   sans version globale du schéma ;
 - [~] synchronisation : entre onglets d'un même stockage seulement, sans
@@ -91,9 +101,14 @@ doivent être validées avant toute évolution fonctionnelle.
 
 ## Priorité 2 — Préparer un usage réel
 
-- [ ] décider si l'application reste locale ou migre vers un backend ;
-- [ ] si backend : définir API, base de données, comptes, sessions, rôles et
-  migrations ;
+- [x] choisir Supabase comme backend ;
+- [~] définir API, base de données, comptes, sessions, rôles et migrations :
+  schéma initial prêt, politiques et fonctions Auth restantes ;
+- [x] exécuter le bootstrap du premier concours et administrateur ;
+- [ ] migrer les données de démonstration ;
+- [~] remplacer progressivement `AppContext` par les requêtes Supabase :
+  couche Auth et chargement distant prêts, écritures métier restantes ;
+- [ ] activer et tester les abonnements Realtime ;
 - [ ] définir les exigences RGPD et la politique de conservation ;
 - [ ] faire valider la supervision des messages directs ;
 - [ ] ajouter sauvegarde, synchronisation et récupération de compte ;
@@ -130,3 +145,10 @@ Effectuer un lot de stabilisation du dépôt, séparé des changements métier :
 
 Ce séquencement réduit le risque de modifier des règles métier sans filet de
 régression.
+
+## Dernière avancée constatée
+
+- connexion distante branchée sur le backend Supabase ;
+- chargement des concours et profils de connexion depuis Supabase ;
+- chargement du snapshot métier depuis Supabase après authentification ;
+- le stockage local reste en secours pour le mode non Supabase.

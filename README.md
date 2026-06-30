@@ -4,8 +4,10 @@ Attelage Pilot est une application web de préparation et de suivi d'un concours
 d'attelage. Elle centralise les tâches, responsables, bénévoles, échéances,
 messages et indicateurs d'avancement d'une équipe organisatrice.
 
-La version actuelle est un prototype frontend autonome : elle ne possède ni API
-ni base de données et conserve toutes les données dans le navigateur.
+Le mode Supabase est engagé : l'écran de connexion lit le concours et les
+profils depuis la base distante, puis charge le snapshot métier après
+authentification. Le mode local reste disponible comme repli tant que la
+migration des écritures n'est pas totalement terminée.
 
 ## État du projet
 
@@ -32,8 +34,11 @@ Lire impérativement les documents suivants avant toute modification :
 - Vite 6 ;
 - CSS global sans framework ;
 - Lucide React pour les icônes ;
-- Context API et `localStorage` pour l'état et la persistance ;
+- Context API pour l'état global, avec repli local et chargement distant via
+  Supabase ;
 - Web Crypto API pour les mots de passe des profils ;
+- Supabase JS et PostgreSQL pour la migration du stockage et de
+  l'authentification ;
 - ESLint 9 ;
 - GitHub Actions et GitHub Pages.
 
@@ -80,6 +85,41 @@ la page « Mon profil ».
 
 Il n'existe actuellement ni script de test, ni suite de tests automatisés.
 
+## Configuration Supabase
+
+Copier `.env.example` vers `.env.local`, puis renseigner :
+
+```env
+VITE_SUPABASE_URL=https://votre-projet.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_xxx
+```
+
+`.env.local` est ignoré par Git. Ne jamais placer une clé `sb_secret_`, un mot
+de passe PostgreSQL ou un token personnel dans une variable `VITE_*`.
+
+Le dossier `supabase/` contient la configuration locale, les migrations et le
+fichier de seed. Après liaison du projet, vérifier puis appliquer les migrations
+avec :
+
+```bash
+npx supabase db push --dry-run
+npx supabase db push
+```
+
+Le second appel modifie la base distante et doit être exécuté uniquement après
+revue de la migration.
+
+Après déploiement des migrations et Edge Functions, créer le premier concours
+et son administrateur avec :
+
+```bash
+npm run supabase:bootstrap
+```
+
+Le script lit `.env.local`, demande les informations métier et masque le mot de
+passe pendant la saisie. Il ne fonctionne qu'une seule fois : le serveur refuse
+toute nouvelle initialisation dès qu'un concours existe.
+
 ## Fonctionnalités présentes
 
 - connexion locale par sélection de profil ;
@@ -119,15 +159,19 @@ ou un téléphone. Les rôles reconnus sont `administrateur`,
 
 ## Données et sécurité
 
-La clé de stockage est `attelage-pilot-data-v1`. Toutes les données métier et
-les empreintes des mots de passe résident dans le
+En mode local, la clé de stockage est `attelage-pilot-data-v1`. Toutes les
+données métier et les empreintes des mots de passe résident alors dans le
 `localStorage` du navigateur. La session active est conservée dans
 `sessionStorage` sous `attelage-session-user`.
 
+En mode Supabase, la source de vérité métier devient la base distante après
+connexion ; la session Auth et quelques identifiants de navigation restent en
+`sessionStorage` pour la durée du navigateur.
+
 Conséquences :
 
-- aucune synchronisation entre appareils ou navigateurs ;
-- aucune sauvegarde serveur ;
+- aucune synchronisation entre appareils ou navigateurs en mode local ;
+- aucune sauvegarde serveur en mode local ;
 - les données peuvent être perdues si le stockage du navigateur est effacé ;
 - les profils sans mot de passe configuré ne peuvent pas se connecter ;
 - les contrôles de rôle sont uniquement exécutés côté client ;
@@ -148,6 +192,10 @@ src/
 ├── App.tsx           navigation et vues principales
 ├── main.tsx          point d'entrée React
 └── styles.css        styles globaux et responsive
+supabase/
+├── migrations/       schéma PostgreSQL versionné
+├── config.toml       configuration locale Supabase
+└── seed.sql           données de développement futures
 ```
 
 Voir [ARCHITECTURE.md](./ARCHITECTURE.md) pour le détail.
@@ -168,5 +216,7 @@ Dans GitHub, `Settings > Pages > Build and deployment` doit utiliser
 - ne pas traiter `node_modules/` comme du code source ;
 - préserver les données locales lors d'une évolution du modèle ;
 - appliquer les autorisations à la fois dans l'interface et dans le store ;
+- conserver les politiques RLS et les contrôles des Edge Functions alignés
+  avec les autorisations de l'interface ;
 - limiter les modifications ciblées dans `App.tsx`, actuellement très volumineux ;
 - documenter toute décision importante dans la mémoire projet.

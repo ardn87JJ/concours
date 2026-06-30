@@ -25,6 +25,25 @@ applicative `0.1.0`.
   vues et incluse dans l'export CSV.
 - export iCalendar `.ics` d'une tâche depuis sa fiche, avec prise en charge des
   événements journée entière et des échéances horaires.
+- configuration locale Supabase et variables publiques d'exemple ;
+- migration PostgreSQL initiale avec modèle multi-concours, contraintes,
+  index et RLS fermé ;
+- déploiement vérifié de la migration initiale sur le projet Supabase lié ;
+- client officiel `@supabase/supabase-js` préparé sans basculement immédiat du
+  stockage local ;
+- politique `.gitignore` pour les environnements, dépendances et artefacts
+  générés.
+- politiques RLS déployées pour les administrateurs, responsables, bénévoles,
+  messages, notifications et audit ;
+- annuaire de connexion public limité, sans exposition des contacts ;
+- Edge Functions `bootstrap-admin` et `manage-member` déployées ;
+- script interactif de création du premier concours et administrateur ;
+- couche frontend Supabase pour l'annuaire, Auth et la gestion des comptes,
+  gardée derrière un mode de transition explicite.
+- écran de connexion Supabase alimenté par l'annuaire public du concours ;
+- chargement du snapshot métier depuis Supabase après authentification ;
+- persistance de la sélection de concours et du profil courant dans la session
+  du navigateur pour le mode Supabase.
 
 ### Vérifié
 
@@ -40,7 +59,10 @@ applicative `0.1.0`.
 - recherche d'en-tête non fonctionnelle ;
 - dépendances, build et sorties TypeScript actuellement suivis par Git ;
 - artefacts `dist/` localement divergents du dernier commit avant la création
-  de cette documentation.
+  de cette documentation ;
+- synchronisation des écritures métier Supabase encore incomplète sur le front ;
+- lecture distante branchée, mais migration des mutations locales vers Supabase
+  encore en cours.
 
 ## [0.1.0] - 2026-06-29
 

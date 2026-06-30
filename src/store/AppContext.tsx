@@ -207,13 +207,100 @@ export function AppProvider({ children }: { children: ReactNode }) {
     sessionStorage.setItem(CURRENT_USER_KEY, data.currentUserId)
   }, [data.activeContestId, data.currentUserId])
 
+  const reloadSupabaseSnapshot = async () => {
+    const snapshot = await loadSupabaseAppData()
+    setData(current => {
+      const activeContestId = snapshot.contests.some(contest => contest.id === current.activeContestId)
+        ? current.activeContestId
+        : snapshot.activeContestId
+      const currentUserId = snapshot.users.some(user => user.id === current.currentUserId)
+        ? current.currentUserId
+        : snapshot.currentUserId
+      return {
+        ...snapshot,
+        activeContestId,
+        currentUserId,
+      }
+    })
+  }
+
   const actions = useMemo(() => ({
     addTask: (task: Omit<Task, 'id' | 'createdAt' | 'comments'>) =>
       setData(current => {
-        if (getContestUsers(current).find(user => user.id === current.currentUserId)?.role !== 'admin') return current
+        const actor = getContestUsers(current).find(user => user.id === current.currentUserId)
+        if (actor?.role !== 'admin') return current
         const id = crypto.randomUUID()
         const title = task.title
-        const adminRecipients = getContestUsers(current).filter(user => user.role === 'admin' && user.id !== current.currentUserId)
+        if (dataBackend === 'supabase') {
+          void (async () => {
+            if (!supabase) return
+            const payload = {
+              id,
+              contest_id: current.activeContestId,
+              category_id: task.categoryId,
+              title: task.title,
+              description: task.description,
+              status: task.status,
+              priority: task.priority,
+              start_date: task.startDate ?? null,
+              due_date: task.dueDate,
+              due_time: task.dueTime ?? null,
+              created_by: current.currentUserId,
+            }
+            const { error } = await supabase.from('tasks').insert(payload)
+            if (error) return
+            if (task.assigneeIds.length) {
+              const { error: assigneeError } = await supabase.from('task_assignees').insert(task.assigneeIds.map(userId => ({
+                contest_id: current.activeContestId,
+                task_id: id,
+                user_id: userId,
+              })))
+              if (assigneeError) return
+            }
+            const notifications = [
+              ...task.assigneeIds
+                .filter(userId => userId !== current.currentUserId)
+                .map(userId => ({
+                  id: crypto.randomUUID(),
+                  contest_id: current.activeContestId,
+                  user_id: userId,
+                  type: 'assignment' as const,
+                  title: 'Nouvelle tâche',
+                  text: title,
+                  task_id: id,
+                  message_id: null,
+                  read_at: null,
+                })),
+              ...getContestUsers(current)
+                .filter(user => user.role === 'admin' && user.id !== current.currentUserId && !task.assigneeIds.includes(user.id))
+                .map(user => ({
+                  id: crypto.randomUUID(),
+                  contest_id: current.activeContestId,
+                  user_id: user.id,
+                  type: 'status' as const,
+                  title: 'Tâche créée',
+                  text: title,
+                  task_id: id,
+                  message_id: null,
+                  read_at: null,
+                })),
+            ]
+            if (notifications.length) {
+              await supabase.from('notifications').insert(notifications)
+            }
+            await supabase.from('audit_events').insert({
+              id: crypto.randomUUID(),
+              contest_id: current.activeContestId,
+              actor_id: current.currentUserId,
+              action: 'create',
+              entity_type: 'task',
+              entity_id: id,
+              description: `a créé la tâche « ${title} »`,
+            })
+            await reloadSupabaseSnapshot()
+          })()
+          return current
+        }
         return {
           ...current,
           tasks: [...current.tasks, {
@@ -225,8 +312,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           notifications: [...current.notifications, ...task.assigneeIds
             .filter(userId => userId !== current.currentUserId)
             .map(userId => notify(userId, { type: 'assignment', title: 'Nouvelle tâche', text: title, taskId: id })),
-            ...adminRecipients
-              .filter(admin => !task.assigneeIds.includes(admin.id))
+            ...getContestUsers(current)
+              .filter(user => user.role === 'admin' && user.id !== current.currentUserId && !task.assigneeIds.includes(user.id))
               .map(admin => notify(admin.id, { type: 'status', title: 'Tâche créée', text: title, taskId: id }))],
           auditLog: [...current.auditLog, audit(current.activeContestId, current.currentUserId, {
             action: 'create', entityType: 'task', entityId: id, description: `a créé la tâche « ${title} »`,
@@ -277,6 +364,92 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (!statusChanged && !assignmentChanged) events.push(audit(current.activeContestId, actor.id, {
           action: 'update', entityType: 'task', entityId: id, description: `a modifié la tâche « ${existing.title} »`,
         }))
+        if (dataBackend === 'supabase') {
+          void (async () => {
+            if (!supabase) return
+            const taskPayload: Record<string, unknown> = {}
+            if (allowedUpdates.title !== undefined) taskPayload.title = allowedUpdates.title
+            if (allowedUpdates.description !== undefined) taskPayload.description = allowedUpdates.description
+            if (allowedUpdates.categoryId !== undefined) taskPayload.category_id = allowedUpdates.categoryId
+            if (allowedUpdates.status !== undefined) taskPayload.status = allowedUpdates.status
+            if (allowedUpdates.priority !== undefined) taskPayload.priority = allowedUpdates.priority
+            if (allowedUpdates.startDate !== undefined) taskPayload.start_date = allowedUpdates.startDate ?? null
+            if (allowedUpdates.dueDate !== undefined) taskPayload.due_date = allowedUpdates.dueDate
+            if (allowedUpdates.dueTime !== undefined) taskPayload.due_time = allowedUpdates.dueTime ?? null
+            if (Object.keys(taskPayload).length) {
+              const { error } = await supabase.from('tasks').update(taskPayload).eq('id', id)
+              if (error) return
+            }
+            if (assignmentChanged) {
+              const { error: deleteError } = await supabase.from('task_assignees')
+                .delete()
+                .eq('task_id', id)
+                .eq('contest_id', current.activeContestId)
+              if (deleteError) return
+              if (nextTask.assigneeIds.length) {
+                const { error: insertError } = await supabase.from('task_assignees').insert(nextTask.assigneeIds.map(userId => ({
+                  contest_id: current.activeContestId,
+                  task_id: id,
+                  user_id: userId,
+                })))
+                if (insertError) return
+              }
+            }
+            const notifications = [
+              ...newlyAssigned.map(userId => ({
+                id: crypto.randomUUID(),
+                contest_id: current.activeContestId,
+                user_id: userId,
+                type: 'assignment' as const,
+                title: 'Tâche assignée',
+                text: existing.title,
+                task_id: id,
+                message_id: null,
+                read_at: null,
+              })),
+              ...statusRecipients.map(userId => ({
+                id: crypto.randomUUID(),
+                contest_id: current.activeContestId,
+                user_id: userId,
+                type: 'status' as const,
+                title: updates.status === 'blocked' ? 'Blocage signalé' : 'Statut mis à jour',
+                text: existing.title,
+                task_id: id,
+                message_id: null,
+                read_at: null,
+              })),
+              ...adminRecipients.map(userId => ({
+                id: crypto.randomUUID(),
+                contest_id: current.activeContestId,
+                user_id: userId,
+                type: 'status' as const,
+                title: assignmentChanged ? 'Assignation modifiée' : statusChanged ? 'Statut de tâche modifié' : 'Tâche modifiée',
+                text: existing.title,
+                task_id: id,
+                message_id: null,
+                read_at: null,
+              })),
+            ]
+            if (notifications.length) {
+              const { error: notificationError } = await supabase.from('notifications').insert(notifications)
+              if (notificationError) return
+            }
+            if (events.length) {
+              const { error: auditError } = await supabase.from('audit_events').insert(events.map(event => ({
+                id: event.id,
+                contest_id: event.contestId,
+                actor_id: event.actorId,
+                action: event.action,
+                entity_type: event.entityType,
+                entity_id: event.entityId || null,
+                description: event.description,
+              })))
+              if (auditError) return
+            }
+            await reloadSupabaseSnapshot()
+          })()
+          return current
+        }
         return {
           ...current,
           tasks: current.tasks.map(task => task.id === id ? nextTask : task),
@@ -304,6 +477,40 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (getContestUsers(current).find(user => user.id === current.currentUserId)?.role !== 'admin') return current
         const task = current.tasks.find(item => item.id === id)
         if (!task) return current
+        if (dataBackend === 'supabase') {
+          void (async () => {
+            if (!supabase) return
+            const { error } = await supabase.from('tasks').delete().eq('id', id)
+            if (error) return
+            const notifications = getContestUsers(current)
+              .filter(user => user.role === 'admin' && user.id !== current.currentUserId)
+              .map(user => ({
+                id: crypto.randomUUID(),
+                contest_id: current.activeContestId,
+                user_id: user.id,
+                type: 'status' as const,
+                title: 'Tâche supprimée',
+                text: task.title,
+                task_id: id,
+                message_id: null,
+                read_at: null,
+              }))
+            if (notifications.length) {
+              await supabase.from('notifications').insert(notifications)
+            }
+            await supabase.from('audit_events').insert({
+              id: crypto.randomUUID(),
+              contest_id: current.activeContestId,
+              actor_id: current.currentUserId,
+              action: 'delete',
+              entity_type: 'task',
+              entity_id: id,
+              description: `a supprimé la tâche « ${task.title} »`,
+            })
+            await reloadSupabaseSnapshot()
+          })()
+          return current
+        }
         return {
           ...current,
           tasks: current.tasks.filter(item => item.id !== id),
@@ -332,6 +539,44 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ...taskRecipients,
           ...getContestUsers(current).filter(user => user.role === 'admin').map(user => user.id),
         ])].filter(userId => userId !== current.currentUserId)
+        if (dataBackend === 'supabase') {
+          void (async () => {
+            if (!supabase) return
+            const { error } = await supabase.from('comments').insert({
+              id: comment.id,
+              contest_id: current.activeContestId,
+              task_id: taskId,
+              author_id: current.currentUserId,
+              text,
+            })
+            if (error) return
+            if (recipients.length) {
+              const { error: notificationError } = await supabase.from('notifications').insert(recipients.map(userId => ({
+                id: crypto.randomUUID(),
+                contest_id: current.activeContestId,
+                user_id: userId,
+                type: 'comment' as const,
+                title: 'Nouveau commentaire',
+                text: task?.title ?? 'Tâche',
+                task_id: taskId,
+                message_id: null,
+                read_at: null,
+              })))
+              if (notificationError) return
+            }
+            await supabase.from('audit_events').insert({
+              id: crypto.randomUUID(),
+              contest_id: current.activeContestId,
+              actor_id: current.currentUserId,
+              action: 'comment',
+              entity_type: 'task',
+              entity_id: taskId,
+              description: 'a ajouté un commentaire à une tâche',
+            })
+            await reloadSupabaseSnapshot()
+          })()
+          return current
+        }
         return {
           ...current,
           tasks: current.tasks.map(task =>
@@ -352,8 +597,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }),
     addCategory: (category: Omit<Category, 'id'>) =>
       setData(current => {
-        if (getContestUsers(current).find(user => user.id === current.currentUserId)?.role !== 'admin') return current
         const id = crypto.randomUUID()
+        const actor = getContestUsers(current).find(user => user.id === current.currentUserId)
+        if (actor?.role !== 'admin') return current
+        if (dataBackend === 'supabase') {
+          void (async () => {
+            if (!supabase) return
+            const { error } = await supabase.from('categories').insert({
+              id,
+              contest_id: current.activeContestId,
+              name: category.name,
+              color: category.color,
+              icon: category.icon,
+            })
+            if (error) return
+            await supabase.from('audit_events').insert({
+              id: crypto.randomUUID(),
+              contest_id: current.activeContestId,
+              actor_id: current.currentUserId,
+              action: 'create',
+              entity_type: 'category',
+              entity_id: id,
+              description: `a créé la catégorie « ${category.name} »`,
+            })
+            await reloadSupabaseSnapshot()
+          })()
+          return current
+        }
         return {
           ...current,
           categories: [...current.categories, { ...category, id }],
@@ -367,6 +637,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const actor = getContestUsers(current).find(user => user.id === current.currentUserId)
         const category = current.categories.find(item => item.id === id)
         if (actor?.role !== 'admin' || !category) return current
+        if (dataBackend === 'supabase') {
+          void (async () => {
+            if (!supabase) return
+            const { error } = await supabase.from('categories').update({
+              name: updates.name ?? category.name,
+              color: updates.color ?? category.color,
+              icon: updates.icon ?? category.icon,
+            }).eq('id', id)
+            if (error) return
+            await supabase.from('audit_events').insert({
+              id: crypto.randomUUID(),
+              contest_id: current.activeContestId,
+              actor_id: current.currentUserId,
+              action: 'update',
+              entity_type: 'category',
+              entity_id: id,
+              description: `a modifié la catégorie « ${category.name} »`,
+            })
+            await reloadSupabaseSnapshot()
+          })()
+          return current
+        }
         return {
           ...current,
           categories: current.categories.map(item => item.id === id ? { ...item, ...updates, id: item.id } : item),
@@ -383,6 +675,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const remaining = current.categories.filter(item => item.id !== id)
         if (!remaining.length) return current
         const fallbackCategoryId = remaining[0].id
+        if (dataBackend === 'supabase') {
+          void (async () => {
+            if (!supabase) return
+            const { error } = await supabase.from('categories').delete().eq('id', id)
+            if (error) return
+            await supabase.from('tasks').update({ category_id: fallbackCategoryId }).eq('contest_id', current.activeContestId).eq('category_id', id)
+            await supabase.from('manager_categories').delete().eq('contest_id', current.activeContestId).eq('category_id', id)
+            await supabase.from('audit_events').insert({
+              id: crypto.randomUUID(),
+              contest_id: current.activeContestId,
+              actor_id: current.currentUserId,
+              action: 'delete',
+              entity_type: 'category',
+              entity_id: id,
+              description: `a supprimé la catégorie « ${category.name} »`,
+            })
+            await reloadSupabaseSnapshot()
+          })()
+          return current
+        }
         return {
           ...current,
           categories: remaining,
@@ -515,6 +827,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const actor = getContestUsers(current).find(user => user.id === current.currentUserId)
         const user = current.users.find(item => item.id === id)
         if (actor?.role !== 'admin' || !user || user.id === current.currentUserId || user.contestId !== current.activeContestId) return current
+        if (dataBackend === 'supabase') {
+          return current
+        }
         const remainingAdmins = current.users.filter(item => item.contestId === current.activeContestId && item.role === 'admin' && item.id !== id)
         if (user.role === 'admin' && !remainingAdmins.length) return current
         return {
@@ -540,6 +855,47 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const recipients = recipientId
           ? [recipientId]
           : getContestUsers(current).filter(user => user.id !== current.currentUserId).map(user => user.id)
+        if (dataBackend === 'supabase') {
+          void (async () => {
+            if (!supabase) return
+            const { error } = await supabase.from('messages').insert({
+              id,
+              contest_id: current.activeContestId,
+              sender_id: current.currentUserId,
+              recipient_id: recipientId ?? null,
+              text: text.trim(),
+            })
+            if (error) return
+            const reads = [{ message_id: id, user_id: current.currentUserId, contest_id: current.activeContestId }]
+            const { error: readError } = await supabase.from('message_reads').insert(reads)
+            if (readError) return
+            if (recipients.length) {
+              const { error: notificationError } = await supabase.from('notifications').insert(recipients.map(userId => ({
+                id: crypto.randomUUID(),
+                contest_id: current.activeContestId,
+                user_id: userId,
+                type: 'message' as const,
+                title: recipientId ? 'Nouveau message privé' : 'Nouveau message dans le canal général',
+                text: text.trim().slice(0, 90),
+                task_id: null,
+                message_id: id,
+                read_at: null,
+              })))
+              if (notificationError) return
+            }
+            await supabase.from('audit_events').insert({
+              id: crypto.randomUUID(),
+              contest_id: current.activeContestId,
+              actor_id: current.currentUserId,
+              action: 'message',
+              entity_type: 'message',
+              entity_id: id,
+              description: recipientId ? 'a envoyé un message privé' : 'a écrit dans le canal général',
+            })
+            await reloadSupabaseSnapshot()
+          })()
+          return current
+        }
         return {
           ...current,
           messages: [...current.messages, {
@@ -560,30 +916,81 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       }),
     markConversationRead: (participantId?: string) =>
-      setData(current => ({
-        ...current,
-        messages: current.messages.map(message => {
-          const belongs = participantId
-            ? (message.senderId === participantId && message.recipientId === current.currentUserId) ||
-              (message.senderId === current.currentUserId && message.recipientId === participantId)
-            : !message.recipientId
-          return belongs && !message.readByIds.includes(current.currentUserId)
-            ? { ...message, readByIds: [...message.readByIds, current.currentUserId] }
-            : message
-        }),
-      })),
+      setData(current => {
+        if (dataBackend === 'supabase') {
+          void (async () => {
+            if (!supabase) return
+            const messages = current.messages.filter(message => {
+              return participantId
+                ? (message.senderId === participantId && message.recipientId === current.currentUserId) ||
+                  (message.senderId === current.currentUserId && message.recipientId === participantId)
+                : !message.recipientId
+            })
+            if (!messages.length) return
+            const rows = messages
+              .filter(message => !message.readByIds.includes(current.currentUserId))
+              .map(message => ({
+                message_id: message.id,
+                user_id: current.currentUserId,
+                contest_id: current.activeContestId,
+                read_at: new Date().toISOString(),
+              }))
+            if (!rows.length) return
+            const { error } = await supabase.from('message_reads').upsert(rows, { onConflict: 'message_id,user_id' })
+            if (error) return
+            await reloadSupabaseSnapshot()
+          })()
+          return current
+        }
+        return {
+          ...current,
+          messages: current.messages.map(message => {
+            const belongs = participantId
+              ? (message.senderId === participantId && message.recipientId === current.currentUserId) ||
+                (message.senderId === current.currentUserId && message.recipientId === participantId)
+              : !message.recipientId
+            return belongs && !message.readByIds.includes(current.currentUserId)
+              ? { ...message, readByIds: [...message.readByIds, current.currentUserId] }
+              : message
+          }),
+        }
+      }),
     markNotificationRead: (id: string) =>
-      setData(current => ({
-        ...current,
-        notifications: current.notifications.map(notification =>
-          notification.id === id && notification.userId === current.currentUserId ? { ...notification, read: true } : notification),
-      })),
+      setData(current => {
+        if (dataBackend === 'supabase') {
+          void (async () => {
+            if (!supabase) return
+            const { error } = await supabase.from('notifications').update({ read_at: new Date().toISOString() }).eq('id', id).eq('user_id', current.currentUserId)
+            if (error) return
+            await reloadSupabaseSnapshot()
+          })()
+          return current
+        }
+        return {
+          ...current,
+          notifications: current.notifications.map(notification =>
+            notification.id === id && notification.userId === current.currentUserId ? { ...notification, read: true } : notification),
+        }
+      }),
     markAllNotificationsRead: () =>
-      setData(current => ({
-        ...current,
-        notifications: current.notifications.map(notification =>
-          notification.userId === current.currentUserId ? { ...notification, read: true } : notification),
-      })),
+      setData(current => {
+        if (dataBackend === 'supabase') {
+          void (async () => {
+            if (!supabase) return
+            const { error } = await supabase.from('notifications')
+              .update({ read_at: new Date().toISOString() })
+              .eq('user_id', current.currentUserId)
+            if (error) return
+            await reloadSupabaseSnapshot()
+          })()
+          return current
+        }
+        return {
+          ...current,
+          notifications: current.notifications.map(notification =>
+            notification.userId === current.currentUserId ? { ...notification, read: true } : notification),
+        }
+      }),
     initializePassword: async (userId: string, password: string) => {
       if (password.length < 8) return
       if (dataBackend === 'supabase') return
@@ -649,6 +1056,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setData(current => {
         const currentUser = getContestUsers(current).find(user => user.id === current.currentUserId)
         if (currentUser?.role !== 'admin') return current
+        if (dataBackend === 'supabase') return current
         return {
           ...current,
           contests: [...current.contests, { ...contest, id }],
@@ -661,6 +1069,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setData(current => {
         const currentUser = getContestUsers(current).find(user => user.id === current.currentUserId)
         if (currentUser?.role !== 'admin') return current
+        if (dataBackend === 'supabase') return current
         if (current.contests.length <= 1 || !current.contests.some(contest => contest.id === id)) return current
         const contests = current.contests.filter(contest => contest.id !== id)
         const deletedUserIds = current.users.filter(user => user.contestId === id).map(user => user.id)
@@ -688,9 +1097,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }),
     setCurrentUserId: (id: string) => setData(current => ({ ...current, currentUserId: id })),
     resetDemo: () =>
-      setData(current => getContestUsers(current).find(user => user.id === current.currentUserId)?.role === 'admin'
-        ? demoData
-        : current),
+      setData(current => {
+        if (dataBackend === 'supabase') return current
+        return getContestUsers(current).find(user => user.id === current.currentUserId)?.role === 'admin'
+          ? demoData
+          : current
+      }),
   }), [data])
 
   return <AppContext.Provider value={{ ready, ...data, ...actions }}>{children}</AppContext.Provider>

@@ -66,7 +66,7 @@ doivent être validées avant toute évolution fonctionnelle.
 - [~] multi-concours : écrans et identifiants présents, isolation des catégories,
   profils, notifications et parcours de création incomplète ;
 - [~] authentification : écran de connexion et session Supabase branchés, mais
-  la synchronisation des écritures métier n'est pas encore complète ;
+  la synchronisation des écritures métier avance par lots ;
 - [~] migrations : quelques valeurs par défaut et version de mot de passe,
   sans version globale du schéma ;
 - [~] synchronisation : entre onglets d'un même stockage seulement, sans
@@ -107,7 +107,7 @@ doivent être validées avant toute évolution fonctionnelle.
 - [x] exécuter le bootstrap du premier concours et administrateur ;
 - [ ] migrer les données de démonstration ;
 - [~] remplacer progressivement `AppContext` par les requêtes Supabase :
-  couche Auth et chargement distant prêts, écritures métier restantes ;
+  couche Auth, chargement distant et plusieurs mutations métier prêts ;
 - [ ] activer et tester les abonnements Realtime ;
 - [ ] définir les exigences RGPD et la politique de conservation ;
 - [ ] faire valider la supervision des messages directs ;
@@ -151,4 +151,6 @@ régression.
 - connexion distante branchée sur le backend Supabase ;
 - chargement des concours et profils de connexion depuis Supabase ;
 - chargement du snapshot métier depuis Supabase après authentification ;
+- catégories, tâches, commentaires, messages, lectures et plusieurs écritures
+  de comptes persistés à distance ;
 - le stockage local reste en secours pour le mode non Supabase.

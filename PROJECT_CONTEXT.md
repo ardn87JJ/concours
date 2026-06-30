@@ -14,8 +14,10 @@ basculement de la source de données à ce stade.
 
 Le travail en cours a déjà basculé l'écran de connexion et le chargement du
 snapshot métier sur Supabase après authentification. Les écritures métier du
-front restent à migrer complètement ; tant que ce point n'est pas terminé, le
-mode local doit rester disponible comme filet de sécurité.
+front sont migrées par lots pour les éléments principaux du concours
+(catégories, tâches, commentaires, messages, lectures et comptes membres).
+Le mode local doit rester disponible comme filet de sécurité tant que toutes
+les vues ne sont pas raccordées.
 
 ## Utilisateurs et besoins
 
@@ -65,6 +67,7 @@ Le bénévole consulte ses tâches dans une interface simplifiée, met leur stat
   d'email ;
 - l'écran de connexion lit l'annuaire public Supabase ; les profils listés
   dépendent du concours sélectionné ;
+- les mutations principales du concours passent progressivement par Supabase ;
 - schéma géré par migrations dans `supabase/migrations` ;
 - RLS obligatoire sur toutes les tables exposées ; aucune politique ouverte
   avant validation de la matrice d'accès ;
@@ -114,7 +117,7 @@ Le bénévole consulte ses tâches dans une interface simplifiée, met leur stat
 - aucune synchronisation distante active tant que les vues utilisent
   `localStorage` ;
 - le mode Supabase charge désormais les données distantes après connexion,
-  mais les mutations front à distance restent en progression ;
+  et plusieurs écritures métier sont déjà persistées à distance ;
 - aucune confidentialité réelle des messages ou données face à un utilisateur
   ayant accès au navigateur ;
 - aucune récupération de mot de passe ;

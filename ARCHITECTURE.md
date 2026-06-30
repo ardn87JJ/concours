@@ -160,7 +160,9 @@ membres authentifiés.
 `src/lib/supabaseApi.ts` fournit l'annuaire, la connexion par profil, le
 bootstrap, la déconnexion, la gestion des membres et le changement de mot de
 passe. `src/lib/supabaseData.ts` charge le snapshot métier distant lorsque
-l'utilisateur est authentifié. `VITE_DATA_BACKEND` peut basculer vers
+l'utilisateur est authentifié. Le store en mode Supabase persiste déjà les
+mutations principales de catégorie, tâche, commentaire, message et lecture
+avant de recharger l'état distant. `VITE_DATA_BACKEND` peut basculer vers
 `supabase` pour activer ce chemin ; le maintien d'un mode local reste
 nécessaire tant que toutes les mutations n'ont pas été raccordées.
 

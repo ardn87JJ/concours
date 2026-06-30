@@ -42,6 +42,8 @@ applicative `0.1.0`.
   gardée derrière un mode de transition explicite.
 - écran de connexion Supabase alimenté par l'annuaire public du concours ;
 - chargement du snapshot métier depuis Supabase après authentification ;
+- mutations Supabase branchées pour catégories, tâches, commentaires,
+  messages, lectures et notifications ;
 - persistance de la sélection de concours et du profil courant dans la session
   du navigateur pour le mode Supabase.
 

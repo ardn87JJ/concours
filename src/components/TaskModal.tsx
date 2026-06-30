@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { AlertTriangle, MessageSquare, Trash2, X } from 'lucide-react'
+import { AlertTriangle, CalendarPlus, MessageSquare, Trash2, X } from 'lucide-react'
 import { useApp } from '../store/AppContext'
 import type { Priority, Task, TaskStatus } from '../types'
+import { downloadTaskCalendar } from '../lib/calendar'
 import { Avatar } from './Avatar'
 import { priorityLabels, statusLabels } from '../lib/format'
 
@@ -11,8 +12,9 @@ interface Props {
 }
 
 export function TaskModal({ task, onClose }: Props) {
-  const { activeContestId, categories, users, currentUserId, addTask, updateTask, deleteTask, addComment } = useApp()
+  const { activeContestId, contests, categories, users, currentUserId, addTask, updateTask, deleteTask, addComment } = useApp()
   const currentUser = users.find(user => user.id === currentUserId)
+  const contest = contests.find(item => item.id === activeContestId)
   const isAdmin = currentUser?.role === 'admin'
   const isManager = Boolean(task && currentUser?.role === 'manager' && (currentUser.managedCategoryIds ?? []).includes(task.categoryId))
   const canEdit = Boolean(isAdmin || isManager)
@@ -23,6 +25,7 @@ export function TaskModal({ task, onClose }: Props) {
   const [priority, setPriority] = useState<Priority>(task?.priority ?? 'normal')
   const [startDate, setStartDate] = useState(task?.startDate ?? '')
   const [dueDate, setDueDate] = useState(task?.dueDate ?? '')
+  const [dueTime, setDueTime] = useState(task?.dueTime ?? '')
   const [assigneeIds, setAssigneeIds] = useState<string[]>(task?.assigneeIds ?? [])
   const [comment, setComment] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -35,7 +38,7 @@ export function TaskModal({ task, onClose }: Props) {
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
-    const values = { title, description, categoryId, status, priority, startDate: startDate || undefined, dueDate, assigneeIds }
+    const values = { title, description, categoryId, status, priority, startDate: startDate || undefined, dueDate, dueTime: dueTime || undefined, assigneeIds }
     if (task) updateTask(task.id, canEdit ? values : { status })
     else addTask({ ...values, contestId: activeContestId })
     onClose()
@@ -59,6 +62,7 @@ export function TaskModal({ task, onClose }: Props) {
               <label className="field"><span>Catégorie</span><select disabled={!isAdmin} value={categoryId} onChange={e => setCategoryId(e.target.value)}>{categories.map(category => <option key={category.id} value={category.id}>{category.icon} {category.name}</option>)}</select></label>
               <label className="field"><span>Date de début</span><input disabled={!canEdit} type="date" max={dueDate} value={startDate} onChange={e => setStartDate(e.target.value)} /></label>
               <label className="field"><span>Échéance</span><input disabled={!canEdit} required type="date" min={startDate} value={dueDate} onChange={e => setDueDate(e.target.value)} /></label>
+              <label className="field"><span>Heure d’échéance (facultative)</span><input disabled={!canEdit} type="time" value={dueTime} onChange={e => setDueTime(e.target.value)} /></label>
               <label className="field"><span>Statut</span><select value={status} onChange={e => setStatus(e.target.value as TaskStatus)}>{Object.entries(statusLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
               <label className="field"><span>Priorité</span><select disabled={!canEdit} value={priority} onChange={e => setPriority(e.target.value as Priority)}>{Object.entries(priorityLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
             </div>
@@ -85,11 +89,14 @@ export function TaskModal({ task, onClose }: Props) {
             )}
           </div>
           <footer className="modal-footer">
-            {task && isAdmin && (
-              confirmDelete
-                ? <button type="button" className="danger-btn" onClick={() => { deleteTask(task.id); onClose() }}><AlertTriangle size={17} /> Confirmer</button>
-                : <button type="button" className="text-danger" onClick={() => setConfirmDelete(true)}><Trash2 size={17} /> Supprimer</button>
-            )}
+            {task && <div className="modal-secondary-actions">
+              <button type="button" className="secondary-btn" onClick={() => contest && downloadTaskCalendar(task, contest, categories.find(category => category.id === task.categoryId)?.name)}><CalendarPlus size={17} /> Ajouter au calendrier</button>
+              {isAdmin && (
+                confirmDelete
+                  ? <button type="button" className="danger-btn" onClick={() => { deleteTask(task.id); onClose() }}><AlertTriangle size={17} /> Confirmer</button>
+                  : <button type="button" className="text-danger" onClick={() => setConfirmDelete(true)}><Trash2 size={17} /> Supprimer</button>
+              )}
+            </div>}
             <div className="footer-actions"><button type="button" className="secondary-btn" onClick={onClose}>Annuler</button><button className="primary-btn" type="submit">{task ? (canEdit ? 'Enregistrer' : 'Mettre à jour le statut') : 'Créer la tâche'}</button></div>
           </footer>
         </form>

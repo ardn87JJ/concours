@@ -7,8 +7,8 @@ import {
   Tag, Trash2, Trophy, Upload, UserRound, Users, X,
 } from 'lucide-react'
 import { useApp } from './store/AppContext'
-import type { Task, TaskStatus, User, UserRole } from './types'
-import { daysUntil, formatDate, isOverdue, roleLabels, statusLabels } from './lib/format'
+import type { Contest, Task, TaskStatus, User, UserRole } from './types'
+import { compareTaskDeadlines, daysUntil, formatDate, formatDeadline, isOverdue, roleLabels, statusLabels } from './lib/format'
 import { membersCsvTemplate, parseMembersCsv, type CsvMember } from './lib/csv'
 import { verifyPassword } from './lib/password'
 import { Avatar, AvatarGroup } from './components/Avatar'
@@ -17,7 +17,7 @@ import { ProgressBar } from './components/ProgressBar'
 import { TaskCard } from './components/TaskCard'
 import { TaskModal } from './components/TaskModal'
 
-type View = 'dashboard' | 'tasks' | 'kanban' | 'timeline' | 'categories' | 'users' | 'history' | 'manager-tasks' | 'my-tasks' | 'progress' | 'messages' | 'settings'
+type View = 'dashboard' | 'tasks' | 'kanban' | 'timeline' | 'categories' | 'users' | 'history' | 'manager-tasks' | 'my-tasks' | 'progress' | 'messages' | 'settings' | 'account'
 
 const navAdmin = [
   { id: 'dashboard', label: 'Vue d’ensemble', icon: LayoutDashboard },
@@ -65,7 +65,7 @@ export default function App() {
 
   useEffect(() => {
     const managerAllowed = currentUser.role === 'manager' && view === 'manager-tasks'
-    if (!isAdmin && !managerAllowed && view !== 'my-tasks' && view !== 'progress' && view !== 'messages') setView('my-tasks')
+    if (!isAdmin && !managerAllowed && view !== 'my-tasks' && view !== 'progress' && view !== 'messages' && view !== 'account') setView('my-tasks')
   }, [currentUser.role, isAdmin, view])
 
   useEffect(() => {
@@ -102,7 +102,7 @@ export default function App() {
 
   const navigate = (next: View) => {
     const managerAllowed = currentUser.role === 'manager' && next === 'manager-tasks'
-    if (!isAdmin && !managerAllowed && next !== 'my-tasks' && next !== 'progress' && next !== 'messages') {
+    if (!isAdmin && !managerAllowed && next !== 'my-tasks' && next !== 'progress' && next !== 'messages' && next !== 'account') {
       setView('my-tasks')
       setSidebarOpen(false)
       return
@@ -124,10 +124,17 @@ export default function App() {
     progress: ['Avancement', 'Suivez la préparation globale du concours.'],
     messages: ['Messagerie', 'Échangez avec l’équipe organisatrice.'],
     settings: ['Paramètres du concours', 'Informations et données locales.'],
+    account: ['Mon profil', 'Gérez la sécurité de votre compte.'],
   }
 
   if (!authenticatedUserId || !authenticatedUser) {
-    return <LoginScreen users={contestUsers} onLogin={login} onInitializePassword={app.initializeAdminPassword} />
+    return <LoginScreen
+      contests={app.contests}
+      users={app.users}
+      onContestChange={app.setActiveContestId}
+      onLogin={login}
+      onInitializePassword={app.initializePassword}
+    />
   }
 
   return (
@@ -157,7 +164,7 @@ export default function App() {
         <div className="sidebar-progress">
           <div><span>{isAdmin ? 'Progression globale' : 'Ma progression'}</span><strong>{isAdmin ? progress : personalProgress}%</strong></div><ProgressBar value={isAdmin ? progress : personalProgress} compact /><small>{isAdmin ? completed : personalCompleted} tâches sur {isAdmin ? contestTasks.length : personalTasks.length}</small>
         </div>
-        <button className={`user-menu ${!isAdmin ? 'static' : ''}`} onClick={() => isAdmin && navigate('settings')}>
+        <button className="user-menu" onClick={() => navigate('account')}>
           <Avatar user={currentUser} /><div><strong>{currentUser.name}</strong><span>{roleLabels[currentUser.role]}</span></div><Settings size={17} />
         </button>
       </aside>
@@ -168,7 +175,7 @@ export default function App() {
           <button className="menu-btn" onClick={() => setSidebarOpen(true)}><Menu /></button>
           {isAdmin
             ? <div className="topbar-search"><Search size={18} /><span>Rechercher une tâche…</span><kbd>⌘ K</kbd></div>
-            : <div className="simple-user-brand"><span className="brand-mark">A</span><div><strong>Mon espace</strong><small>{contest.name}</small></div></div>}
+            : <button className="simple-user-brand" onClick={() => navigate('account')}><span className="brand-mark">A</span><span><strong>Mon espace</strong><small>{contest.name}</small></span></button>}
           {isImpersonating
             ? <button className="return-admin" onClick={returnToAdmin}><ArrowLeft size={16} /> Retour administrateur</button>
             : isAdmin && <div className="user-switch">
@@ -212,6 +219,7 @@ export default function App() {
           {view === 'progress' && <UserProgressView tasks={contestTasks} />}
           {view === 'messages' && <MessagingView key={messageNavigationKey} initialConversation={messageConversation} />}
           {isAdmin && view === 'settings' && <SettingsView />}
+          {view === 'account' && <AccountView />}
         </div>
       </main>
       {!isAdmin && <nav className="user-bottom-nav">
@@ -225,46 +233,69 @@ export default function App() {
   )
 }
 
-function LoginScreen({ users, onLogin, onInitializePassword }: { users: User[]; onLogin: (userId: string) => void; onInitializePassword: (userId: string, password: string) => Promise<void> }) {
+function LoginScreen({
+  contests,
+  users,
+  onContestChange,
+  onLogin,
+  onInitializePassword,
+}: {
+  contests: Contest[]
+  users: User[]
+  onContestChange: (contestId: string) => void
+  onLogin: (userId: string) => void
+  onInitializePassword: (userId: string, password: string) => Promise<void>
+}) {
+  const [selectedContestId, setSelectedContestId] = useState('')
   const [search, setSearch] = useState('')
-  const [selectedAdmin, setSelectedAdmin] = useState<User | null>(null)
+  const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [password, setPassword] = useState('')
   const [confirmation, setConfirmation] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
-  const filtered = users.filter(user => user.name.toLocaleLowerCase('fr').includes(search.toLocaleLowerCase('fr')))
-  const adminHasPassword = Boolean(selectedAdmin?.passwordHash && selectedAdmin.passwordSalt)
+  const contestUsers = users.filter(user => user.contestId === selectedContestId)
+  const filtered = contestUsers.filter(user => user.name.toLocaleLowerCase('fr').includes(search.toLocaleLowerCase('fr')))
+  const hasPassword = Boolean(selectedUser?.passwordHash && selectedUser.passwordSalt)
+  const canInitializePassword = selectedUser?.role === 'admin' && !contestUsers.some(user =>
+    user.role === 'admin' && Boolean(user.passwordHash && user.passwordSalt))
+
+  const chooseContest = (contestId: string) => {
+    setSelectedContestId(contestId)
+    setSearch('')
+    setSelectedUser(null)
+    if (contestId) onContestChange(contestId)
+  }
 
   const chooseProfile = (user: User) => {
-    if (user.role !== 'admin') {
-      onLogin(user.id)
-      return
-    }
     setPassword('')
     setConfirmation('')
     setError('')
-    setSelectedAdmin(user)
+    setSelectedUser(user)
   }
 
-  const authenticateAdmin = async (event: FormEvent) => {
+  const authenticate = async (event: FormEvent) => {
     event.preventDefault()
-    if (!selectedAdmin) return
+    if (!selectedUser) return
     setBusy(true)
     try {
-      if (!selectedAdmin.passwordHash || !selectedAdmin.passwordSalt) {
+      if (!selectedUser.passwordHash || !selectedUser.passwordSalt) {
+        if (!canInitializePassword) {
+          setError('Aucun mot de passe n’est configuré. Demandez à un administrateur de l’initialiser.')
+          return
+        }
         if (password !== confirmation) {
           setError('Les deux mots de passe ne correspondent pas.')
           return
         }
-        await onInitializePassword(selectedAdmin.id, password)
-        onLogin(selectedAdmin.id)
+        await onInitializePassword(selectedUser.id, password)
+        onLogin(selectedUser.id)
       } else {
-        const valid = await verifyPassword(password, selectedAdmin.passwordHash, selectedAdmin.passwordSalt)
+        const valid = await verifyPassword(password, selectedUser.passwordHash, selectedUser.passwordSalt)
         if (!valid) {
           setError('Mot de passe incorrect.')
           return
         }
-        onLogin(selectedAdmin.id)
+        onLogin(selectedUser.id)
       }
     } finally {
       setBusy(false)
@@ -277,29 +308,40 @@ function LoginScreen({ users, onLogin, onInitializePassword }: { users: User[]; 
         <div className="login-logo">A</div>
         <span>ATTELAGE PILOT</span>
         <h1>Bienvenue</h1>
-        <p>Sélectionnez votre profil pour accéder à votre espace.</p>
+        <p>Sélectionnez votre concours, puis votre profil.</p>
       </header>
-      <label className="login-search"><Search size={17} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Rechercher mon nom…" /></label>
-      <div className="profile-list">
-        {filtered.map(user => <button key={user.id} onClick={() => chooseProfile(user)}>
-          <span><strong>{user.name}</strong><small>{roleLabels[user.role]}</small></span>
-          {user.role === 'admin' && <em><ShieldCheck size={13} /> Admin</em>}
-          <ChevronRight size={20} />
-        </button>)}
-      </div>
-      {!filtered.length && <p className="login-empty">Aucun profil trouvé.</p>}
-      <footer><UserRound size={16} /><span>Les profils administrateurs sont protégés par mot de passe. Les autres profils restent accessibles directement.</span></footer>
+      <label className="login-contest">
+        <span>Concours</span>
+        <select value={selectedContestId} onChange={event => chooseContest(event.target.value)}>
+          <option value="">Sélectionner un concours…</option>
+          {contests.map(contest => <option key={contest.id} value={contest.id}>{contest.name}</option>)}
+        </select>
+      </label>
+      {selectedContestId
+        ? <>
+          <label className="login-search"><Search size={17} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Rechercher mon nom…" /></label>
+          <div className="profile-list">
+            {filtered.map(user => <button key={user.id} onClick={() => chooseProfile(user)}>
+              <span><strong>{user.name}</strong><small>{roleLabels[user.role]}</small></span>
+              {user.role === 'admin' && <em><ShieldCheck size={13} /> Admin</em>}
+              <ChevronRight size={20} />
+            </button>)}
+          </div>
+          {!filtered.length && <p className="login-empty">Aucun profil trouvé pour ce concours.</p>}
+        </>
+        : <p className="login-empty">Choisissez d’abord le concours auquel vous participez.</p>}
+      <footer><UserRound size={16} /><span>Chaque profil est protégé par un mot de passe personnel.</span></footer>
     </section>
-    {selectedAdmin && <div className="login-password-backdrop" onMouseDown={event => event.target === event.currentTarget && setSelectedAdmin(null)}>
-      <form className="login-password-dialog" onSubmit={event => void authenticateAdmin(event)}>
-        <button type="button" className="icon-btn password-close" onClick={() => setSelectedAdmin(null)}><X size={19} /></button>
+    {selectedUser && <div className="login-password-backdrop" onMouseDown={event => event.target === event.currentTarget && setSelectedUser(null)}>
+      <form className="login-password-dialog" onSubmit={event => void authenticate(event)}>
+        <button type="button" className="icon-btn password-close" onClick={() => setSelectedUser(null)}><X size={19} /></button>
         <span className="password-icon"><LockKeyhole size={24} /></span>
-        <h2>{adminHasPassword ? 'Connexion administrateur' : 'Créer le mot de passe administrateur'}</h2>
-        <p>{adminHasPassword ? `Saisissez le mot de passe de ${selectedAdmin.name}.` : 'Première connexion : définissez votre mot de passe.'}</p>
-        <label className="field"><span>Mot de passe</span><input autoFocus required type="password" autoComplete={adminHasPassword ? 'current-password' : 'new-password'} value={password} onChange={event => { setPassword(event.target.value); setError('') }} /></label>
-        {!adminHasPassword && <label className="field"><span>Confirmer le mot de passe</span><input required type="password" autoComplete="new-password" value={confirmation} onChange={event => { setConfirmation(event.target.value); setError('') }} /></label>}
+        <h2>{hasPassword ? 'Connexion' : canInitializePassword ? 'Créer le mot de passe administrateur' : 'Mot de passe non configuré'}</h2>
+        <p>{hasPassword ? `Saisissez le mot de passe de ${selectedUser.name}.` : canInitializePassword ? 'Première connexion du concours : définissez votre mot de passe.' : 'Un administrateur doit définir votre premier mot de passe.'}</p>
+        {(hasPassword || canInitializePassword) && <label className="field"><span>Mot de passe</span><input autoFocus required minLength={8} type="password" autoComplete={hasPassword ? 'current-password' : 'new-password'} value={password} onChange={event => { setPassword(event.target.value); setError('') }} /></label>}
+        {!hasPassword && canInitializePassword && <label className="field"><span>Confirmer le mot de passe</span><input required minLength={8} type="password" autoComplete="new-password" value={confirmation} onChange={event => { setConfirmation(event.target.value); setError('') }} /></label>}
         {error && <div className="password-error">{error}</div>}
-        <button className="primary-btn password-submit" disabled={busy}>{busy ? 'Vérification…' : adminHasPassword ? 'Se connecter' : 'Créer et se connecter'}</button>
+        {(hasPassword || canInitializePassword) && <button className="primary-btn password-submit" disabled={busy}>{busy ? 'Vérification…' : hasPassword ? 'Se connecter' : 'Créer et se connecter'}</button>}
       </form>
     </div>}
   </main>
@@ -317,7 +359,7 @@ function Dashboard({ tasks, onOpen, onNavigate }: { tasks: Task[]; onOpen: (task
   const overdue = tasks.filter(isOverdue).length
   const blocked = tasks.filter(task => task.status === 'blocked').length
   const progress = tasks.length ? Math.round(done / tasks.length * 100) : 0
-  const upcoming = [...tasks].filter(task => task.status !== 'done').sort((a, b) => a.dueDate.localeCompare(b.dueDate)).slice(0, 5)
+  const upcoming = [...tasks].filter(task => task.status !== 'done').sort(compareTaskDeadlines).slice(0, 5)
   const days = daysUntil(contest.startDate)
 
   return <>
@@ -344,7 +386,7 @@ function Dashboard({ tasks, onOpen, onNavigate }: { tasks: Task[]; onOpen: (task
         <PanelHeader title="Prochaines échéances" action="Voir toutes" onAction={() => onNavigate('tasks')} />
         <div className="upcoming-list">{upcoming.map(task => {
           const category = categories.find(item => item.id === task.categoryId)
-          return <button key={task.id} onClick={() => onOpen(task)}><div className="date-box"><strong>{new Date(`${task.dueDate}T12:00`).getDate()}</strong><span>{formatDate(task.dueDate, { month: 'short' })}</span></div><div className="upcoming-info"><strong>{task.title}</strong><span style={{ color: category?.color }}>{category?.name}</span></div><AvatarGroup users={users.filter(user => task.assigneeIds.includes(user.id))} /></button>
+          return <button key={task.id} onClick={() => onOpen(task)}><div className="date-box"><strong>{new Date(`${task.dueDate}T12:00`).getDate()}</strong><span>{formatDate(task.dueDate, { month: 'short' })}{task.dueTime ? ` · ${task.dueTime}` : ''}</span></div><div className="upcoming-info"><strong>{task.title}</strong><span style={{ color: category?.color }}>{category?.name}</span></div><AvatarGroup users={users.filter(user => task.assigneeIds.includes(user.id))} /></button>
         })}</div>
       </div>
     </section>
@@ -387,7 +429,7 @@ function TasksView({ tasks, onOpen }: { tasks: Task[]; onOpen: (task: Task) => v
         return <button className="table-row" key={task.id} onClick={() => onOpen(task)}>
           <span className="table-task"><i style={{ background: categoryItem?.color }} /><span><strong>{task.title}</strong><small>{categoryItem?.name}</small></span></span>
           <span><StatusBadge status={task.status} /></span><span><PriorityBadge priority={task.priority} /></span>
-          <span className={isOverdue(task) ? 'overdue-text' : ''}>{formatDate(task.dueDate, { day: 'numeric', month: 'short' })}</span>
+          <span className={isOverdue(task) ? 'overdue-text' : ''}>{formatDeadline(task, { day: 'numeric', month: 'short' })}</span>
           <span><AvatarGroup users={users.filter(user => task.assigneeIds.includes(user.id))} /></span>
         </button>
       })}
@@ -405,7 +447,7 @@ function TimelineView({ tasks, onOpen }: { tasks: Task[]; onOpen: (task: Task) =
   const { categories } = useApp()
   const [group, setGroup] = useState<'category' | 'date'>('date')
   const [display, setDisplay] = useState<'timeline' | 'gantt'>('timeline')
-  const sorted = [...tasks].sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+  const sorted = [...tasks].sort(compareTaskDeadlines)
   const groups = useMemo(() => {
     const map = new Map<string, Task[]>()
     sorted.forEach(task => {
@@ -421,7 +463,7 @@ function TimelineView({ tasks, onOpen }: { tasks: Task[]; onOpen: (task: Task) =
     {groups.map(([key, groupedTasks]) => {
       const category = categories.find(item => item.id === key)
       const label = group === 'category' ? `${category?.icon} ${category?.name}` : new Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric' }).format(new Date(`${key}-01T12:00`))
-      return <section className="timeline-group" key={key}><header><h2>{label}</h2><span>{groupedTasks.length} tâches</span></header><div className="timeline-line">{groupedTasks.map(task => <button className={isOverdue(task) ? 'overdue' : ''} key={task.id} onClick={() => onOpen(task)}><div className="timeline-date"><strong>{new Date(`${task.dueDate}T12:00`).getDate()}</strong><span>{formatDate(task.dueDate, { month: 'short' })}</span></div><i style={{ background: categories.find(c => c.id === task.categoryId)?.color }} /><div><strong>{task.title}</strong><span>{categories.find(c => c.id === task.categoryId)?.name}</span></div><StatusBadge status={task.status} /></button>)}</div></section>
+      return <section className="timeline-group" key={key}><header><h2>{label}</h2><span>{groupedTasks.length} tâches</span></header><div className="timeline-line">{groupedTasks.map(task => <button className={isOverdue(task) ? 'overdue' : ''} key={task.id} onClick={() => onOpen(task)}><div className="timeline-date"><strong>{new Date(`${task.dueDate}T12:00`).getDate()}</strong><span>{formatDate(task.dueDate, { month: 'short' })}{task.dueTime ? ` · ${task.dueTime}` : ''}</span></div><i style={{ background: categories.find(c => c.id === task.categoryId)?.color }} /><div><strong>{task.title}</strong><span>{categories.find(c => c.id === task.categoryId)?.name}</span></div><StatusBadge status={task.status} /></button>)}</div></section>
     })}</>}
     {display === 'gantt' && <GanttView tasks={sorted} onOpen={onOpen} />}
   </div>
@@ -464,10 +506,10 @@ function GanttView({ tasks, onOpen }: { tasks: Task[]; onOpen: (task: Task) => v
           const category = categories.find(item => item.id === task.categoryId)
           const assignees = users.filter(user => task.assigneeIds.includes(user.id))
           return <div className="gantt-row" key={task.id}>
-            <button className="gantt-task-label" onClick={() => onOpen(task)}><i style={{ background: category?.color }} /><span><strong>{task.title}</strong><small>{formatDate(task.startDate ?? task.dueDate, { day: 'numeric', month: 'short' })} → {formatDate(task.dueDate, { day: 'numeric', month: 'short' })}</small></span><AvatarGroup users={assignees} /></button>
+            <button className="gantt-task-label" onClick={() => onOpen(task)}><i style={{ background: category?.color }} /><span><strong>{task.title}</strong><small>{formatDate(task.startDate ?? task.dueDate, { day: 'numeric', month: 'short' })} → {formatDeadline(task, { day: 'numeric', month: 'short' })}</small></span><AvatarGroup users={assignees} /></button>
             <div className="gantt-track" style={{ width: chartWidth, backgroundSize: `${7 / totalDays * 100}% 100%` }}>
               {todayPosition >= 0 && todayPosition <= 100 && <i className="today-line" style={{ left: `${todayPosition}%` }} />}
-              <button className={`gantt-bar gantt-${task.status}`} style={{ left: `${left}%`, width: `${width}%`, backgroundColor: category?.color }} onClick={() => onOpen(task)} title={`${task.title} — ${formatDate(task.dueDate)}`}>
+              <button className={`gantt-bar gantt-${task.status}`} style={{ left: `${left}%`, width: `${width}%`, backgroundColor: category?.color }} onClick={() => onOpen(task)} title={`${task.title} — ${formatDeadline(task)}`}>
                 <span>{task.status === 'done' ? 100 : task.status === 'in_progress' ? 50 : 0}%</span>
               </button>
             </div>
@@ -525,7 +567,8 @@ function CategoriesView({ tasks }: { tasks: Task[] }) {
 }
 
 function UsersView({ tasks }: { tasks: Task[] }) {
-  const { users, categories, addUser, addUsers, updateUser, deleteUser } = useApp()
+  const { users, categories, activeContestId, addUser, addUsers, updateUser, deleteUser, setUserPassword } = useApp()
+  const contestUsers = users.filter(user => user.contestId === activeContestId)
   const [adding, setAdding] = useState(false)
   const [importing, setImporting] = useState(false)
   const [editingUserId, setEditingUserId] = useState<string | null>(null)
@@ -537,10 +580,19 @@ function UsersView({ tasks }: { tasks: Task[] }) {
   const [role, setRole] = useState<UserRole>('volunteer')
   const [managedCategoryIds, setManagedCategoryIds] = useState<string[]>([])
   const [color, setColor] = useState('#476a9d')
-  const submit = (e: FormEvent) => {
+  const [memberPassword, setMemberPassword] = useState('')
+  const [memberPasswordConfirmation, setMemberPasswordConfirmation] = useState('')
+  const [passwordError, setPasswordError] = useState('')
+  const submit = async (e: FormEvent) => {
     e.preventDefault()
-    addUser({ name, contact, role, managedCategoryIds: role === 'manager' ? managedCategoryIds : [], initials: name.split(' ').map(word => word[0]).join('').slice(0, 2).toUpperCase(), color })
+    if (memberPassword !== memberPasswordConfirmation) {
+      setPasswordError('Les deux mots de passe ne correspondent pas.')
+      return
+    }
+    const userId = addUser({ name, contact, role, managedCategoryIds: role === 'manager' ? managedCategoryIds : [], initials: name.split(' ').map(word => word[0]).join('').slice(0, 2).toUpperCase(), color })
+    await setUserPassword(userId, memberPassword)
     setName(''); setContact(''); setManagedCategoryIds([]); setColor('#476a9d'); setAdding(false)
+    setMemberPassword(''); setMemberPasswordConfirmation(''); setPasswordError('')
   }
 
   const startEdit = (user: User) => {
@@ -551,11 +603,18 @@ function UsersView({ tasks }: { tasks: Task[] }) {
     setRole(user.role)
     setColor(user.color)
     setManagedCategoryIds(user.managedCategoryIds ?? [])
+    setMemberPassword('')
+    setMemberPasswordConfirmation('')
+    setPasswordError('')
   }
 
-  const submitEdit = (e: FormEvent) => {
+  const submitEdit = async (e: FormEvent) => {
     e.preventDefault()
     if (!editingUserId) return
+    if (memberPassword && memberPassword !== memberPasswordConfirmation) {
+      setPasswordError('Les deux mots de passe ne correspondent pas.')
+      return
+    }
     updateUser(editingUserId, {
       name,
       contact,
@@ -564,17 +623,21 @@ function UsersView({ tasks }: { tasks: Task[] }) {
       initials: name.split(' ').map(word => word[0]).join('').slice(0, 2).toUpperCase(),
       managedCategoryIds: role === 'manager' ? managedCategoryIds : [],
     })
+    if (memberPassword) await setUserPassword(editingUserId, memberPassword)
     setEditingUserId(null)
     setName('')
     setContact('')
     setManagedCategoryIds([])
+    setMemberPassword('')
+    setMemberPasswordConfirmation('')
+    setPasswordError('')
   }
 
   const readCsv = async (file?: File) => {
     if (!file) return
     setImportMessage('')
     const result = parseMembersCsv(await file.text())
-    const seen = new Set(users.map(user => user.contact.trim().toLocaleLowerCase('fr')))
+    const seen = new Set(contestUsers.map(user => user.contact.trim().toLocaleLowerCase('fr')))
     const duplicates: string[] = []
     const unique = result.members.filter(member => {
       const key = member.contact.trim().toLocaleLowerCase('fr')
@@ -610,7 +673,7 @@ function UsersView({ tasks }: { tasks: Task[] }) {
   }
 
   return <>
-    <div className="section-actions"><span>{users.length} membres dans l’équipe</span><div><button className="secondary-btn" onClick={() => setImporting(current => !current)}><Upload size={17} /> Importer un CSV</button><button className="secondary-btn" onClick={() => { setAdding(true); setEditingUserId(null) }}><Plus size={17} /> Ajouter un membre</button></div></div>
+    <div className="section-actions"><span>{contestUsers.length} membres dans l’équipe</span><div><button className="secondary-btn" onClick={() => setImporting(current => !current)}><Upload size={17} /> Importer un CSV</button><button className="secondary-btn" onClick={() => { setAdding(true); setEditingUserId(null); setMemberPassword(''); setMemberPasswordConfirmation(''); setPasswordError('') }}><Plus size={17} /> Ajouter un membre</button></div></div>
     {importing && <section className="panel csv-import">
       <header><div><FileSpreadsheet size={22} /><span><strong>Import de membres</strong><small>Fichier CSV encodé en UTF-8, séparé par un point-virgule ou une virgule.</small></span></div><button className="icon-btn" onClick={() => setImporting(false)}><X /></button></header>
       <div className="csv-format">
@@ -624,9 +687,31 @@ function UsersView({ tasks }: { tasks: Task[] }) {
       {csvMembers.length > 0 && <div className="csv-preview"><div><strong>{csvMembers.length} membre{csvMembers.length > 1 ? 's' : ''} prêt{csvMembers.length > 1 ? 's' : ''} à importer</strong><button className="primary-btn" onClick={importMembers}>Confirmer l’import</button></div>{csvMembers.slice(0, 5).map(member => <span key={`${member.name}-${member.contact}`}><b>{member.name}</b><em>{roleLabels[member.role]}</em><small>{member.contact}</small></span>)}</div>}
       {importMessage && <div className="import-success"><CheckCircle2 size={17} />{importMessage}</div>}
     </section>}
-    {adding && <form className="inline-create user-create" onSubmit={submit}><input autoFocus required value={name} onChange={e => setName(e.target.value)} placeholder="Nom complet" /><input required value={contact} onChange={e => setContact(e.target.value)} placeholder="Email ou téléphone" /><input value={color} onChange={e => setColor(e.target.value)} placeholder="#476a9d" /><select value={role} onChange={e => setRole(e.target.value as UserRole)}>{Object.entries(roleLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select>{role === 'manager' && <div className="new-manager-categories"><span>Catégories gérées</span>{categories.map(category => <label key={category.id}><input type="checkbox" checked={managedCategoryIds.includes(category.id)} onChange={() => setManagedCategoryIds(current => current.includes(category.id) ? current.filter(id => id !== category.id) : [...current, category.id])} />{category.name}</label>)}</div>}<button className="primary-btn">Ajouter</button><button type="button" className="icon-btn" onClick={() => setAdding(false)}><X /></button></form>}
-    {editingUserId && <form className="inline-create user-create" onSubmit={submitEdit}><input autoFocus required value={name} onChange={e => setName(e.target.value)} placeholder="Nom complet" /><input required value={contact} onChange={e => setContact(e.target.value)} placeholder="Email ou téléphone" /><input value={color} onChange={e => setColor(e.target.value)} placeholder="#476a9d" /><select value={role} onChange={e => setRole(e.target.value as UserRole)}>{Object.entries(roleLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select>{role === 'manager' && <div className="new-manager-categories"><span>Catégories gérées</span>{categories.map(category => <label key={category.id}><input type="checkbox" checked={managedCategoryIds.includes(category.id)} onChange={() => setManagedCategoryIds(current => current.includes(category.id) ? current.filter(id => id !== category.id) : [...current, category.id])} />{category.name}</label>)}</div>}<button className="primary-btn">Enregistrer</button><button type="button" className="icon-btn" onClick={() => setEditingUserId(null)}><X /></button></form>}
-    <div className="users-grid">{users.map(user => {
+    {adding && <form className="inline-create user-create" onSubmit={event => void submit(event)}>
+      <input autoFocus required value={name} onChange={e => setName(e.target.value)} placeholder="Nom complet" />
+      <input required value={contact} onChange={e => setContact(e.target.value)} placeholder="Email ou téléphone" />
+      <input value={color} onChange={e => setColor(e.target.value)} placeholder="#476a9d" />
+      <select value={role} onChange={e => setRole(e.target.value as UserRole)}>{Object.entries(roleLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select>
+      <input required minLength={8} type="password" autoComplete="new-password" value={memberPassword} onChange={e => { setMemberPassword(e.target.value); setPasswordError('') }} placeholder="Mot de passe initial" />
+      <input required minLength={8} type="password" autoComplete="new-password" value={memberPasswordConfirmation} onChange={e => { setMemberPasswordConfirmation(e.target.value); setPasswordError('') }} placeholder="Confirmer le mot de passe" />
+      {role === 'manager' && <div className="new-manager-categories"><span>Catégories gérées</span>{categories.map(category => <label key={category.id}><input type="checkbox" checked={managedCategoryIds.includes(category.id)} onChange={() => setManagedCategoryIds(current => current.includes(category.id) ? current.filter(id => id !== category.id) : [...current, category.id])} />{category.name}</label>)}</div>}
+      {passwordError && <div className="password-error">{passwordError}</div>}
+      <button className="primary-btn">Ajouter</button>
+      <button type="button" className="icon-btn" onClick={() => setAdding(false)}><X /></button>
+    </form>}
+    {editingUserId && <form className="inline-create user-create" onSubmit={event => void submitEdit(event)}>
+      <input autoFocus required value={name} onChange={e => setName(e.target.value)} placeholder="Nom complet" />
+      <input required value={contact} onChange={e => setContact(e.target.value)} placeholder="Email ou téléphone" />
+      <input value={color} onChange={e => setColor(e.target.value)} placeholder="#476a9d" />
+      <select value={role} onChange={e => setRole(e.target.value as UserRole)}>{Object.entries(roleLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select>
+      <input minLength={8} type="password" autoComplete="new-password" value={memberPassword} onChange={e => { setMemberPassword(e.target.value); setPasswordError('') }} placeholder="Nouveau mot de passe (facultatif)" />
+      <input required={Boolean(memberPassword)} minLength={8} type="password" autoComplete="new-password" value={memberPasswordConfirmation} onChange={e => { setMemberPasswordConfirmation(e.target.value); setPasswordError('') }} placeholder="Confirmer le mot de passe" />
+      {role === 'manager' && <div className="new-manager-categories"><span>Catégories gérées</span>{categories.map(category => <label key={category.id}><input type="checkbox" checked={managedCategoryIds.includes(category.id)} onChange={() => setManagedCategoryIds(current => current.includes(category.id) ? current.filter(id => id !== category.id) : [...current, category.id])} />{category.name}</label>)}</div>}
+      {passwordError && <div className="password-error">{passwordError}</div>}
+      <button className="primary-btn">Enregistrer</button>
+      <button type="button" className="icon-btn" onClick={() => setEditingUserId(null)}><X /></button>
+    </form>}
+    <div className="users-grid">{contestUsers.map(user => {
       const assigned = tasks.filter(task => task.assigneeIds.includes(user.id))
       const done = assigned.filter(task => task.status === 'done').length
       return <article className="user-card" key={user.id}>
@@ -639,7 +724,7 @@ function UsersView({ tasks }: { tasks: Task[] }) {
             }} title="Supprimer le profil"><Trash2 size={15} /></button>
           </div>
         </div>
-        <div><h2>{user.name}</h2><span>{roleLabels[user.role]}</span><p>{user.contact}</p></div>
+        <div><h2>{user.name}</h2><span>{roleLabels[user.role]}</span><p>{user.contact}</p><small className={user.passwordHash && user.passwordSalt ? 'password-ready' : 'password-missing'}>{user.passwordHash && user.passwordSalt ? 'Mot de passe configuré' : 'Mot de passe à configurer'}</small></div>
         {user.role === 'manager' && <div className="manager-category-assignment"><strong>Catégories responsables</strong><div>{categories.map(category => <button key={category.id} className={(user.managedCategoryIds ?? []).includes(category.id) ? 'selected' : ''} onClick={() => updateUser(user.id, { managedCategoryIds: (user.managedCategoryIds ?? []).includes(category.id) ? (user.managedCategoryIds ?? []).filter(id => id !== category.id) : [...(user.managedCategoryIds ?? []), category.id] })}>{category.icon} {category.name}</button>)}</div></div>}
         <div className="user-stats"><strong>{assigned.length}<small>tâches</small></strong><strong>{done}<small>terminées</small></strong></div><ProgressBar value={assigned.length ? Math.round(done / assigned.length * 100) : 0} compact />
       </article>
@@ -726,12 +811,12 @@ function MyTasks({ tasks, onOpen }: { tasks: Task[]; onOpen: (task: Task) => voi
     <section>
       <h3>À faire</h3>
       <div className="simple-user-list">
-        {open.sort((a, b) => a.dueDate.localeCompare(b.dueDate)).map(task => {
+        {open.sort(compareTaskDeadlines).map(task => {
           const category = categories.find(item => item.id === task.categoryId)
           return <article key={task.id} className={isOverdue(task) ? 'overdue' : ''} style={{ '--task-color': category?.color } as CSSProperties}>
           <button className="simple-task-open" onClick={() => onOpen(task)}>
             <span className={`simple-status status-${task.status}`}><i /></span>
-            <span><em style={{ color: category?.color }}>{category?.icon} {category?.name}</em><strong>{task.title}</strong><small className={isOverdue(task) ? 'overdue-text' : ''}><CalendarDays size={15} /> {isOverdue(task) ? 'En retard · ' : ''}{formatDate(task.dueDate)}</small></span>
+            <span><em style={{ color: category?.color }}>{category?.icon} {category?.name}</em><strong>{task.title}</strong><small className={isOverdue(task) ? 'overdue-text' : ''}><CalendarDays size={15} /> {isOverdue(task) ? 'En retard · ' : ''}{formatDeadline(task)}</small></span>
             <ChevronRight size={20} />
           </button>
           <div className="simple-task-actions">
@@ -765,8 +850,8 @@ function MyTasks({ tasks, onOpen }: { tasks: Task[]; onOpen: (task: Task) => voi
       <div><span>👋</span><div><small>Bonjour {currentUser?.name.split(' ')[0]}</small><h2>{open.length ? `${open.length} tâche${open.length > 1 ? 's' : ''} à suivre` : 'Tout est terminé !'}</h2><p>Les actions les plus urgentes apparaissent en premier.</p></div></div>
       <div className="personal-progress"><strong>{progress}%</strong><ProgressBar value={progress} compact /><span>{done.length} sur {tasks.length} terminées</span></div>
     </section>
-    <section><div className="my-section-title"><h2>À faire maintenant</h2><span>{open.length}</span></div><div className="simple-task-list">{open.sort((a, b) => a.dueDate.localeCompare(b.dueDate)).map(task => <article key={task.id} className={isOverdue(task) ? 'overdue' : ''}><button className="task-main" onClick={() => onOpen(task)}><StatusBadge status={task.status} /><h3>{task.title}</h3><p>{task.description}</p><span><CalendarDays size={16} /> Avant le {formatDate(task.dueDate)}</span><PriorityBadge priority={task.priority} /></button><div className="quick-actions">{task.status !== 'in_progress' && <button onClick={() => updateTask(task.id, { status: 'in_progress' })}><CircleDot size={18} /> Commencer</button>}<button className="complete-action" onClick={() => updateTask(task.id, { status: 'done' })}><Check size={19} /> Marquer terminée</button><button className="block-action" onClick={() => updateTask(task.id, { status: 'blocked' })}><AlertOctagon size={18} /> Signaler un blocage</button></div></article>)}</div></section>
-    {done.length > 0 && <section><div className="my-section-title"><h2>Terminées</h2><span>{done.length}</span></div><div className="completed-list">{done.map(task => <button key={task.id} onClick={() => onOpen(task)}><CheckCircle2 size={21} /><span>{task.title}</span><small>{formatDate(task.dueDate)}</small></button>)}</div></section>}
+    <section><div className="my-section-title"><h2>À faire maintenant</h2><span>{open.length}</span></div><div className="simple-task-list">{open.sort(compareTaskDeadlines).map(task => <article key={task.id} className={isOverdue(task) ? 'overdue' : ''}><button className="task-main" onClick={() => onOpen(task)}><StatusBadge status={task.status} /><h3>{task.title}</h3><p>{task.description}</p><span><CalendarDays size={16} /> Avant le {formatDeadline(task)}</span><PriorityBadge priority={task.priority} /></button><div className="quick-actions">{task.status !== 'in_progress' && <button onClick={() => updateTask(task.id, { status: 'in_progress' })}><CircleDot size={18} /> Commencer</button>}<button className="complete-action" onClick={() => updateTask(task.id, { status: 'done' })}><Check size={19} /> Marquer terminée</button><button className="block-action" onClick={() => updateTask(task.id, { status: 'blocked' })}><AlertOctagon size={18} /> Signaler un blocage</button></div></article>)}</div></section>
+    {done.length > 0 && <section><div className="my-section-title"><h2>Terminées</h2><span>{done.length}</span></div><div className="completed-list">{done.map(task => <button key={task.id} onClick={() => onOpen(task)}><CheckCircle2 size={21} /><span>{task.title}</span><small>{formatDeadline(task)}</small></button>)}</div></section>}
     {!tasks.length && <EmptyState text="Aucune tâche ne vous est assignée." />}
   </div>
 }
@@ -819,6 +904,7 @@ function UserProgressView({ tasks }: { tasks: Task[] }) {
 function MessagingView({ initialConversation = 'general' }: { initialConversation?: string }) {
   const { users, messages, activeContestId, currentUserId, sendMessage, markConversationRead } = useApp()
   const [conversation, setConversation] = useState<'general' | string>(initialConversation)
+  const [mobileChatOpen, setMobileChatOpen] = useState(true)
   const [search, setSearch] = useState('')
   const [text, setText] = useState('')
   const currentUser = users.find(user => user.id === currentUserId)!
@@ -847,6 +933,7 @@ function MessagingView({ initialConversation = 'general' }: { initialConversatio
 
   useEffect(() => {
     setConversation(initialConversation)
+    setMobileChatOpen(true)
   }, [initialConversation])
 
   useEffect(() => {
@@ -861,21 +948,26 @@ function MessagingView({ initialConversation = 'general' }: { initialConversatio
     setText('')
   }
 
+  const openConversation = (nextConversation: string) => {
+    setConversation(nextConversation)
+    setMobileChatOpen(true)
+  }
+
   const lastDirectMessage = (userId: string) =>
     [...contestMessages].reverse().find(message =>
       (message.senderId === currentUserId && message.recipientId === userId) ||
       (message.senderId === userId && message.recipientId === currentUserId))
 
-  return <section className={`messaging-panel panel ${!isAdmin ? 'simple-messaging' : ''}`}>
+  return <section className={`messaging-panel panel ${!isAdmin ? 'simple-messaging' : ''} ${mobileChatOpen ? 'mobile-chat-open' : ''}`}>
     <aside className="conversation-list">
       <header><h2>Conversations</h2><span>{users.length} membres</span></header>
       <label className="message-search"><Search size={15} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Rechercher un membre…" /></label>
       <div className="conversation-scroll">
-        {isAdmin && <button className={`supervision-link ${conversation === 'all' ? 'active' : ''}`} onClick={() => setConversation('all')}>
+        {isAdmin && <button className={`supervision-link ${conversation === 'all' ? 'active' : ''}`} onClick={() => openConversation('all')}>
           <span className="supervision-avatar"><ShieldCheck size={18} /></span>
           <span><strong>Tous les échanges</strong><small>{contestMessages.length} messages à superviser</small></span>
         </button>}
-        <button className={conversation === 'general' ? 'active' : ''} onClick={() => setConversation('general')}>
+        <button className={conversation === 'general' ? 'active' : ''} onClick={() => openConversation('general')}>
           <span className="general-avatar"><Hash size={18} /></span>
           <span><strong>Canal général</strong><small>Visible par toute l’équipe</small></span>{generalUnread > 0 && <em className="unread-count">{generalUnread}</em>}
         </button>
@@ -883,7 +975,7 @@ function MessagingView({ initialConversation = 'general' }: { initialConversatio
         {contacts.map(user => {
           const last = lastDirectMessage(user.id)
           const unread = contestMessages.filter(message => message.senderId === user.id && message.recipientId === currentUserId && !message.readByIds.includes(currentUserId)).length
-          return <button key={user.id} className={conversation === user.id ? 'active' : ''} onClick={() => setConversation(user.id)}>
+          return <button key={user.id} className={conversation === user.id ? 'active' : ''} onClick={() => openConversation(user.id)}>
             <span className="online-avatar"><Avatar user={user} /><i /></span>
             <span><strong>{user.name}</strong><small>{last?.text ?? roleLabels[user.role]}</small></span>
             {unread > 0 ? <em className="unread-count">{unread}</em> : last && <time>{new Date(last.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</time>}
@@ -894,7 +986,7 @@ function MessagingView({ initialConversation = 'general' }: { initialConversatio
           {directPairs.map(pair => {
             const members = pair.split(':').map(id => users.find(user => user.id === id)).filter(Boolean)
             const label = members.map(user => user?.name).join(' ↔ ')
-            return <button key={pair} className={conversation === `pair:${pair}` ? 'active' : ''} onClick={() => setConversation(`pair:${pair}`)}>
+            return <button key={pair} className={conversation === `pair:${pair}` ? 'active' : ''} onClick={() => openConversation(`pair:${pair}`)}>
               <span className="pair-avatars">{members.map(user => <Avatar key={user?.id} user={user} size="sm" />)}</span>
               <span><strong>{label}</strong><small>Conversation directe</small></span>
             </button>
@@ -904,6 +996,7 @@ function MessagingView({ initialConversation = 'general' }: { initialConversatio
     </aside>
     <div className="chat">
       <header className="chat-header">
+        <button className="mobile-chat-back" onClick={() => setMobileChatOpen(false)} aria-label="Revenir aux conversations"><ArrowLeft size={18} /></button>
         {conversation === 'all'
           ? <><span className="supervision-avatar"><ShieldCheck size={18} /></span><div><strong>Tous les échanges</strong><small>Vue de supervision administrateur</small></div></>
           : selectedPair.length === 2
@@ -946,8 +1039,58 @@ function MessagingView({ initialConversation = 'general' }: { initialConversatio
   </section>
 }
 
+function AccountView() {
+  const { users, currentUserId, changeOwnPassword } = useApp()
+  const currentUser = users.find(user => user.id === currentUserId)!
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmation, setConfirmation] = useState('')
+  const [status, setStatus] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault()
+    setStatus('')
+    if (!currentUser.passwordHash || !currentUser.passwordSalt) {
+      setStatus('Demandez à un administrateur de définir votre premier mot de passe.')
+      return
+    }
+    if (newPassword !== confirmation) {
+      setStatus('Les deux nouveaux mots de passe ne correspondent pas.')
+      return
+    }
+    setBusy(true)
+    try {
+      const valid = await verifyPassword(currentPassword, currentUser.passwordHash, currentUser.passwordSalt)
+      if (!valid) {
+        setStatus('Le mot de passe actuel est incorrect.')
+        return
+      }
+      await changeOwnPassword(currentUser.id, newPassword)
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirmation('')
+      setStatus('Mot de passe mis à jour.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return <section className="panel account-card">
+    <header><Avatar user={currentUser} size="lg" /><div><h2>{currentUser.name}</h2><span>{roleLabels[currentUser.role]}</span><p>{currentUser.contact}</p></div></header>
+    <form className="password-settings" onSubmit={event => void submit(event)}>
+      <h3>Modifier mon mot de passe</h3>
+      <label className="field"><span>Mot de passe actuel</span><input required type="password" autoComplete="current-password" value={currentPassword} onChange={event => { setCurrentPassword(event.target.value); setStatus('') }} /></label>
+      <label className="field"><span>Nouveau mot de passe</span><input required minLength={8} type="password" autoComplete="new-password" value={newPassword} onChange={event => { setNewPassword(event.target.value); setStatus('') }} /></label>
+      <label className="field"><span>Confirmer le nouveau mot de passe</span><input required minLength={8} type="password" autoComplete="new-password" value={confirmation} onChange={event => { setConfirmation(event.target.value); setStatus('') }} /></label>
+      {status && <div className={status.includes('mis à jour') ? 'password-success' : 'password-error'}>{status}</div>}
+      <button className="primary-btn" disabled={busy}><LockKeyhole size={16} /> {busy ? 'Vérification…' : 'Modifier le mot de passe'}</button>
+    </form>
+  </section>
+}
+
 function SettingsView() {
-  const { contests, tasks, users, categories, auditLog, messages, currentUserId, activeContestId, addContest, deleteContest, setActiveContestId, changeAdminPassword, resetDemo } = useApp()
+  const { contests, tasks, users, categories, auditLog, messages, activeContestId, addContest, deleteContest, setActiveContestId, resetDemo } = useApp()
   const contest = contests.find(item => item.id === activeContestId)!
   const [creating, setCreating] = useState(false)
   const [name, setName] = useState('')
@@ -955,9 +1098,6 @@ function SettingsView() {
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [description, setDescription] = useState('')
-  const [newPassword, setNewPassword] = useState('')
-  const [passwordConfirmation, setPasswordConfirmation] = useState('')
-  const [passwordStatus, setPasswordStatus] = useState('')
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
@@ -972,18 +1112,6 @@ function SettingsView() {
     if (window.confirm(`Supprimer « ${contestName} » et ses ${count} tâche${count > 1 ? 's' : ''} ? Cette action est définitive.`)) {
       deleteContest(id)
     }
-  }
-
-  const updatePassword = async (event: FormEvent) => {
-    event.preventDefault()
-    if (newPassword !== passwordConfirmation) {
-      setPasswordStatus('Les deux mots de passe ne correspondent pas.')
-      return
-    }
-    await changeAdminPassword(currentUserId, newPassword)
-    setNewPassword('')
-    setPasswordConfirmation('')
-    setPasswordStatus('Mot de passe mis à jour.')
   }
 
   const downloadFile = (name: string, content: string, type: string) => {
@@ -1005,9 +1133,10 @@ function SettingsView() {
       task.priority,
       task.startDate ?? '',
       task.dueDate,
+      task.dueTime ?? '',
       task.assigneeIds.map(id => users.find(user => user.id === id)?.name).filter(Boolean).join(', '),
     ].map(escape).join(';'))
-    downloadFile(`taches-${contest.name.toLocaleLowerCase('fr').replace(/[^a-z0-9]+/g, '-')}.csv`, `\uFEFFtitre;description;categorie;statut;priorite;date_debut;echeance;assignes\n${rows.join('\n')}`, 'text/csv;charset=utf-8')
+    downloadFile(`taches-${contest.name.toLocaleLowerCase('fr').replace(/[^a-z0-9]+/g, '-')}.csv`, `\uFEFFtitre;description;categorie;statut;priorite;date_debut;echeance;heure_echeance;assignes\n${rows.join('\n')}`, 'text/csv;charset=utf-8')
   }
 
   const exportBackup = () => {
@@ -1060,7 +1189,6 @@ function SettingsView() {
     </section>
     <div className="settings-grid">
       <section className="panel settings-card"><h2>Concours actif</h2><dl><div><dt>Nom</dt><dd>{contest.name}</dd></div><div><dt>Lieu</dt><dd>{contest.location}</dd></div><div><dt>Dates</dt><dd>Du {formatDate(contest.startDate)} au {formatDate(contest.endDate)}</dd></div><div><dt>Description</dt><dd>{contest.description || 'Aucune description'}</dd></div></dl></section>
-      <section className="panel settings-card"><h2>Sécurité du profil</h2><p>Modifiez le mot de passe de {users.find(user => user.id === currentUserId)?.name}.</p><form className="password-settings" onSubmit={event => void updatePassword(event)}><label className="field"><span>Nouveau mot de passe</span><input required type="password" autoComplete="new-password" value={newPassword} onChange={event => { setNewPassword(event.target.value); setPasswordStatus('') }} /></label><label className="field"><span>Confirmation</span><input required type="password" autoComplete="new-password" value={passwordConfirmation} onChange={event => { setPasswordConfirmation(event.target.value); setPasswordStatus('') }} /></label>{passwordStatus && <div className={passwordStatus.includes('mis à jour') ? 'password-success' : 'password-error'}>{passwordStatus}</div>}<button className="primary-btn"><LockKeyhole size={16} /> Modifier le mot de passe</button></form></section>
       <section className="panel settings-card"><h2>Exporter les données</h2><p>Téléchargez les tâches dans un fichier CSV ou une sauvegarde complète du concours. Les mots de passe ne sont jamais inclus.</p><div className="export-actions"><button className="secondary-btn" onClick={exportTasksCsv}><FileSpreadsheet size={17} /> Tâches en CSV</button><button className="secondary-btn" onClick={exportBackup}><Download size={17} /> Sauvegarde JSON</button></div></section>
       <section className="panel settings-card"><h2>Données de démonstration</h2><p>Les modifications sont conservées uniquement dans ce navigateur. Réinitialisez pour retrouver le jeu de données initial.</p><button className="secondary-btn" onClick={() => window.confirm('Réinitialiser toutes les données locales ?') && resetDemo()}><RotateCcw size={17} /> Réinitialiser les données</button><div className="local-notice"><ShieldCheck size={20} /><span><strong>Stockage local</strong> Aucun envoi vers un serveur.</span></div></section>
     </div>

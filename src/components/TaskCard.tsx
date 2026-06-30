@@ -1,7 +1,7 @@
 import { CalendarDays, MessageSquare } from 'lucide-react'
 import { useApp } from '../store/AppContext'
 import type { Task } from '../types'
-import { formatDate, isOverdue } from '../lib/format'
+import { formatDeadline, isOverdue } from '../lib/format'
 import { AvatarGroup } from './Avatar'
 import { PriorityBadge, StatusBadge } from './Badge'
 
@@ -21,7 +21,7 @@ export function TaskCard({ task, onClick, showStatus = true }: { task: Task; onC
       </div>
       <strong className="task-title">{task.title}</strong>
       <div className="task-card-meta">
-        <span className={overdue ? 'overdue-text' : ''}><CalendarDays size={15} /> {formatDate(task.dueDate, { day: 'numeric', month: 'short' })}</span>
+        <span className={overdue ? 'overdue-text' : ''}><CalendarDays size={15} /> {formatDeadline(task, { day: 'numeric', month: 'short' })}</span>
         {task.comments.length > 0 && <span><MessageSquare size={14} />{task.comments.length}</span>}
         <AvatarGroup users={assignees} />
       </div>

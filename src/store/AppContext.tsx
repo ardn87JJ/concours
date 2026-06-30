@@ -12,7 +12,7 @@ interface AppContextValue extends AppData {
   addCategory: (category: Omit<Category, 'id'>) => void
   updateCategory: (id: string, updates: Partial<Category>) => void
   deleteCategory: (id: string) => void
-  addUser: (user: Omit<User, 'id' | 'contestId'>) => void
+  addUser: (user: Omit<User, 'id' | 'contestId'>) => string
   addUsers: (users: Array<Omit<User, 'id' | 'contestId'>>) => void
   updateUser: (id: string, updates: Partial<User>) => void
   deleteUser: (id: string) => void
@@ -20,8 +20,9 @@ interface AppContextValue extends AppData {
   markConversationRead: (participantId?: string) => void
   markNotificationRead: (id: string) => void
   markAllNotificationsRead: () => void
-  initializeAdminPassword: (userId: string, password: string) => Promise<void>
-  changeAdminPassword: (userId: string, password: string) => Promise<void>
+  initializePassword: (userId: string, password: string) => Promise<void>
+  setUserPassword: (userId: string, password: string) => Promise<void>
+  changeOwnPassword: (userId: string, password: string) => Promise<void>
   addContest: (contest: Omit<Contest, 'id'>) => string
   deleteContest: (id: string) => void
   setActiveContestId: (id: string) => void
@@ -95,7 +96,7 @@ const loadData = (): AppData => {
           contestId: user.contestId ?? demoUser?.contestId ?? parsed.activeContestId,
           managedCategoryIds: user.managedCategoryIds ?? demoUser?.managedCategoryIds ?? [],
         }
-        if (migratedUser.role !== 'admin' || !migratedUser.passwordHash || migratedUser.passwordVersion === PASSWORD_VERSION) return migratedUser
+        if (!migratedUser.passwordHash || migratedUser.passwordVersion === PASSWORD_VERSION) return migratedUser
         const safeUser = { ...migratedUser }
         delete safeUser.passwordHash
         delete safeUser.passwordSalt
@@ -322,10 +323,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           })],
         }
       }),
-    addUser: (user: Omit<User, 'id' | 'contestId'>) =>
+    addUser: (user: Omit<User, 'id' | 'contestId'>) => {
+      const id = crypto.randomUUID()
       setData(current => {
         if (getContestUsers(current).find(item => item.id === current.currentUserId)?.role !== 'admin') return current
-        const id = crypto.randomUUID()
         return {
           ...current,
           users: [...current.users, { ...user, id, contestId: current.activeContestId }],
@@ -333,7 +334,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
             action: 'create', entityType: 'user', entityId: id, description: `a créé le profil ${user.role === 'admin' ? 'administrateur ' : ''}« ${user.name} »`,
           })],
         }
-      }),
+      })
+      return id
+    },
     addUsers: (users: Array<Omit<User, 'id' | 'contestId'>>) =>
       setData(current => {
         if (getContestUsers(current).find(user => user.id === current.currentUserId)?.role !== 'admin') return current
@@ -433,28 +436,52 @@ export function AppProvider({ children }: { children: ReactNode }) {
         notifications: current.notifications.map(notification =>
           notification.userId === current.currentUserId ? { ...notification, read: true } : notification),
       })),
-    initializeAdminPassword: async (userId: string, password: string) => {
+    initializePassword: async (userId: string, password: string) => {
+      if (password.length < 8) return
       const credential = await createPasswordCredential(password)
       setData(current => {
+        const target = current.users.find(user => user.id === userId)
+        const hasConfiguredAdmin = getContestUsers(current, target?.contestId)
+          .some(user => user.role === 'admin' && Boolean(user.passwordHash && user.passwordSalt))
+        if (target?.role !== 'admin' || hasConfiguredAdmin || (target.passwordHash && target.passwordSalt)) return current
         const next = {
           ...current,
-          users: current.users.map(user => {
-          if (user.id !== userId || user.role !== 'admin' || (user.passwordHash && user.passwordSalt)) return user
-          return { ...user, ...credential }
-        }),
+          users: current.users.map(user => user.id === userId ? { ...user, ...credential } : user),
         }
         localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
         return next
       })
     },
-    changeAdminPassword: async (userId: string, password: string) => {
+    setUserPassword: async (userId: string, password: string) => {
+      if (password.length < 8) return
       const credential = await createPasswordCredential(password)
       setData(current => {
         const actor = getContestUsers(current).find(user => user.id === current.currentUserId)
-        if (actor?.role !== 'admin' || actor.id !== userId) return current
+        const target = getContestUsers(current).find(user => user.id === userId)
+        if (actor?.role !== 'admin' || !target) return current
         const next = {
           ...current,
           users: current.users.map(user => user.id === userId ? { ...user, ...credential } : user),
+          auditLog: [...current.auditLog, audit(current.activeContestId, actor.id, {
+            action: 'update', entityType: 'user', entityId: userId, description: `a défini un nouveau mot de passe pour « ${target.name} »`,
+          })],
+        }
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+        return next
+      })
+    },
+    changeOwnPassword: async (userId: string, password: string) => {
+      if (password.length < 8) return
+      const credential = await createPasswordCredential(password)
+      setData(current => {
+        const actor = getContestUsers(current).find(user => user.id === current.currentUserId)
+        if (!actor || actor.id !== userId) return current
+        const next = {
+          ...current,
+          users: current.users.map(user => user.id === userId ? { ...user, ...credential } : user),
+          auditLog: [...current.auditLog, audit(current.activeContestId, actor.id, {
+            action: 'update', entityType: 'user', entityId: userId, description: 'a modifié son mot de passe',
+          })],
         }
         localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
         return next

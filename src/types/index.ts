@@ -84,6 +84,7 @@ export interface Task {
   priority: Priority
   startDate?: string
   dueDate: string
+  dueTime?: string
   assigneeIds: string[]
   comments: Comment[]
   createdAt: string

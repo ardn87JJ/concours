@@ -21,6 +21,9 @@ La navigation repose sur un état React `view`. Le mode local continue d'utilise
 `AppContext` et `localStorage`, tandis que le mode Supabase charge l'annuaire
 public, la session Auth et le snapshot métier après connexion.
 
+En mode Supabase, la session Auth n'est pas persistée côté navigateur et le
+contexte de concours/profil reste uniquement en mémoire durant la session React.
+
 ## Structure du dépôt
 
 | Chemin | Responsabilité |
@@ -99,8 +102,8 @@ chargement Supabase après authentification :
 Chaque changement de l'état sérialise l'ensemble de `AppData`. Des écouteurs
 rechargent le stockage sur modification depuis un autre onglet, focus de la
 fenêtre ou changement de visibilité en mode local. Le mode Supabase conserve la
-sélection courante dans `sessionStorage` et recharge le snapshot métier après
-authentification.
+sélection courante uniquement en mémoire pendant la session React et recharge
+le snapshot métier après authentification.
 
 Limites :
 
@@ -149,8 +152,12 @@ membres authentifiés.
 
 - `bootstrap-admin` crée une seule fois le premier compte Auth, son profil, son
   concours, son appartenance administrateur et les catégories initiales ;
+- `create-contest` exige une session administrateur, crée un concours et ses
+  catégories initiales, puis rattache l'acteur comme administrateur ;
+- `delete-contest` exige une session administrateur et supprime un concours si
+  au moins un autre concours reste disponible ;
 - `manage-member` exige une session administrateur du concours pour créer un
-  compte ou réinitialiser son mot de passe ;
+  compte, réinitialiser son mot de passe ou retirer un membre du concours ;
 - les identifiants Auth utilisent une adresse technique dérivée de l'UUID,
   invisible dans l'interface ;
 - les clés secrètes restent exclusivement dans l'environnement Supabase.
@@ -158,13 +165,14 @@ membres authentifiés.
 ### Transition frontend
 
 `src/lib/supabaseApi.ts` fournit l'annuaire, la connexion par profil, le
-bootstrap, la déconnexion, la gestion des membres et le changement de mot de
-passe. `src/lib/supabaseData.ts` charge le snapshot métier distant lorsque
-l'utilisateur est authentifié. Le store en mode Supabase persiste déjà les
-mutations principales de catégorie, tâche, commentaire, message et lecture
-avant de recharger l'état distant. `VITE_DATA_BACKEND` peut basculer vers
-`supabase` pour activer ce chemin ; le maintien d'un mode local reste
-nécessaire tant que toutes les mutations n'ont pas été raccordées.
+bootstrap, la déconnexion, la gestion des concours, des membres et le
+changement de mot de passe. `src/lib/supabaseData.ts` charge le snapshot métier
+distant lorsque l'utilisateur est authentifié. Le store en mode Supabase
+persiste les mutations principales de catégorie, tâche, commentaire, message,
+lecture, création/suppression de concours et gestion des membres avant de
+recharger l'état distant. `VITE_DATA_BACKEND` peut basculer vers `supabase`
+pour activer ce chemin ; le maintien d'un mode local reste nécessaire tant que
+toutes les mutations visibles n'ont pas été raccordées.
 
 ## Flux d'une mutation
 
@@ -184,7 +192,8 @@ d'interface.
 
 ## Authentification locale
 
-- l'identifiant connecté est stocké dans `sessionStorage` ;
+- en mode local, l'identifiant connecté est conservé uniquement pendant la
+  session navigateur ;
 - l'écran demande d'abord le concours et ne présente que ses profils ;
 - chaque profil doit fournir son mot de passe ;
 - au premier accès de l'administrateur initial, un mot de passe est dérivé avec
@@ -193,6 +202,8 @@ d'interface.
 - un membre peut modifier le sien après vérification du secret actuel ;
 - seules l'empreinte, le sel et la version sont conservés ;
 - la comparaison est effectuée côté navigateur ;
+- en mode Supabase, l'authentification repose sur la session Auth distante et
+  ne persiste plus dans le navigateur ;
 - un administrateur connecté peut simuler un autre profil.
 
 Ce dispositif empêche un accès administrateur accidentel via l'interface, mais

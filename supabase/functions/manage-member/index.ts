@@ -21,7 +21,13 @@ interface ResetPasswordPayload {
   password: string
 }
 
-type ManageMemberPayload = CreateMemberPayload | ResetPasswordPayload
+interface DeleteMemberPayload {
+  action: 'delete'
+  contestId: string
+  userId: string
+}
+
+type ManageMemberPayload = CreateMemberPayload | ResetPasswordPayload | DeleteMemberPayload
 
 const initials = (name: string) =>
   name.trim().split(/\s+/).map(part => part[0]).join('').slice(0, 2).toLocaleUpperCase('fr')
@@ -44,8 +50,8 @@ Deno.serve(async request => {
     if (userError || !user) return jsonResponse({ error: 'Session invalide.' }, 401)
 
     const payload = await request.json() as ManageMemberPayload
-    if (!payload.contestId || !payload.password || payload.password.length < 8) {
-      return jsonResponse({ error: 'Concours et mot de passe de 8 caractères minimum requis.' }, 400)
+    if (!payload.contestId) {
+      return jsonResponse({ error: 'Concours requis.' }, 400)
     }
 
     const { data: membership, error: membershipError } = await admin
@@ -56,6 +62,42 @@ Deno.serve(async request => {
       .maybeSingle()
     if (membershipError) throw membershipError
     if (membership?.role !== 'admin') return jsonResponse({ error: 'Droits administrateur requis.' }, 403)
+
+    if (payload.action === 'delete') {
+      const { data: target, error: targetError } = await admin
+        .from('contest_members')
+        .select('user_id')
+        .eq('contest_id', payload.contestId)
+        .eq('user_id', payload.userId)
+        .maybeSingle()
+      if (targetError) throw targetError
+      if (!target) return jsonResponse({ error: 'Membre introuvable dans ce concours.' }, 404)
+      if (payload.userId === user.id) return jsonResponse({ error: 'Il est interdit de supprimer son propre profil.' }, 400)
+
+      const { error: deleteError } = await admin
+        .from('contest_members')
+        .delete()
+        .eq('contest_id', payload.contestId)
+        .eq('user_id', payload.userId)
+      if (deleteError) throw deleteError
+
+      const { count, error: remainingError } = await admin
+        .from('contest_members')
+        .select('user_id', { count: 'exact', head: true })
+        .eq('user_id', payload.userId)
+      if (remainingError) throw remainingError
+
+      if ((count ?? 0) === 0) {
+        const { error: authError } = await admin.auth.admin.deleteUser(payload.userId)
+        if (authError) throw authError
+      }
+
+      return jsonResponse({ userId: payload.userId })
+    }
+
+    if (!payload.password || payload.password.length < 8) {
+      return jsonResponse({ error: 'Mot de passe de 8 caractères minimum requis.' }, 400)
+    }
 
     if (payload.action === 'reset_password') {
       const { data: target, error: targetError } = await admin

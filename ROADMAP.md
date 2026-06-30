@@ -21,6 +21,9 @@ doivent être validées avant toute évolution fonctionnelle.
 - [x] annuaire public limité pour l'écran de connexion ;
 - [x] Edge Function de bootstrap déployée ;
 - [x] Edge Function de création/réinitialisation des membres déployée ;
+- [x] Edge Function de création de concours déployée ;
+- [x] Edge Function de suppression de membre déployée ;
+- [x] Edge Function de suppression de concours déployée ;
 - [x] couche frontend Supabase pour Auth et gestion des comptes ;
 - [x] RLS fermé et index du modèle métier ;
 - [x] client Supabase préparé ;
@@ -42,6 +45,7 @@ doivent être validées avant toute évolution fonctionnelle.
 
 - [x] espaces administrateur, responsable et bénévole ;
 - [x] sélection du concours avant l'affichage des profils de connexion ;
+- [x] mode Supabase sans persistance navigateur après rechargement ;
 - [x] permissions métier de base dans le store ;
 - [x] messagerie générale et directe ;
 - [x] notifications et états de lecture ;
@@ -103,11 +107,13 @@ doivent être validées avant toute évolution fonctionnelle.
 
 - [x] choisir Supabase comme backend ;
 - [~] définir API, base de données, comptes, sessions, rôles et migrations :
-  schéma initial prêt, politiques et fonctions Auth restantes ;
+  schéma initial prêt, politiques et fonctions Auth restantes, mutations
+  principales encore à clôturer ;
 - [x] exécuter le bootstrap du premier concours et administrateur ;
 - [ ] migrer les données de démonstration ;
 - [~] remplacer progressivement `AppContext` par les requêtes Supabase :
-  couche Auth, chargement distant et plusieurs mutations métier prêts ;
+  couche Auth, chargement distant et plusieurs mutations métier prêts, reste
+  à finir la couverture complète des parcours visibles ;
 - [ ] activer et tester les abonnements Realtime ;
 - [ ] définir les exigences RGPD et la politique de conservation ;
 - [ ] faire valider la supervision des messages directs ;
@@ -151,6 +157,6 @@ régression.
 - connexion distante branchée sur le backend Supabase ;
 - chargement des concours et profils de connexion depuis Supabase ;
 - chargement du snapshot métier depuis Supabase après authentification ;
-- catégories, tâches, commentaires, messages, lectures et plusieurs écritures
-  de comptes persistés à distance ;
+- catégories, tâches, commentaires, messages, lectures, création/suppression
+  de concours et gestion des comptes membres persistés à distance ;
 - le stockage local reste en secours pour le mode non Supabase.

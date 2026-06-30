@@ -41,7 +41,7 @@ const navPersonal = [
 export default function App() {
   const app = useApp()
   const isRemote = dataBackend === 'supabase' && isSupabaseConfigured && Boolean(supabase)
-  const [authenticatedUserId, setAuthenticatedUserId] = useState<string | null>(() => sessionStorage.getItem('attelage-session-user'))
+  const [authenticatedUserId, setAuthenticatedUserId] = useState<string | null>(null)
   const [sessionUserId, setSessionUserId] = useState<string | null>(null)
   const [view, setView] = useState<View>('dashboard')
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -67,13 +67,6 @@ export default function App() {
   }, [isRemote])
 
   const authenticatedUserIdEffective = isRemote ? sessionUserId : authenticatedUserId
-
-  useEffect(() => {
-    if (!isRemote && authenticatedUserIdEffective && !app.users.find(user => user.id === authenticatedUserIdEffective)) {
-      sessionStorage.removeItem('attelage-session-user')
-      setAuthenticatedUserId(null)
-    }
-  }, [app.users, authenticatedUserIdEffective, isRemote])
 
   useEffect(() => {
     if (!isRemote) {
@@ -115,9 +108,9 @@ export default function App() {
   if (isRemote && !authenticatedUserIdEffective) {
     return <RemoteLoginScreen
       onLogin={async (userId, contestId) => {
-        sessionStorage.setItem('attelage-session-user', userId)
-        sessionStorage.setItem('attelage-active-contest', contestId)
         setSessionUserId(userId)
+        app.setActiveContestId(contestId)
+        app.setCurrentUserId(userId)
       }}
     />
   }
@@ -128,15 +121,11 @@ export default function App() {
 
   const login = (userId: string) => {
     app.setCurrentUserId(userId)
-    sessionStorage.setItem('attelage-session-user', userId)
     setAuthenticatedUserId(userId)
     setView(app.users.find(user => user.id === userId)?.role === 'admin' ? 'dashboard' : 'my-tasks')
   }
 
   const logout = async () => {
-    sessionStorage.removeItem('attelage-session-user')
-    sessionStorage.removeItem('attelage-active-contest')
-    sessionStorage.removeItem('attelage-current-user')
     setAuthenticatedUserId(null)
     if (isRemote && supabase) {
       await signOutProfile()
@@ -1272,18 +1261,18 @@ function SettingsView() {
   const [endDate, setEndDate] = useState('')
   const [description, setDescription] = useState('')
 
-  const submit = (event: FormEvent) => {
+  const submit = async (event: FormEvent) => {
     event.preventDefault()
-    addContest({ name, location, startDate, endDate, description })
+    await addContest({ name, location, startDate, endDate, description })
     setName(''); setLocation(''); setStartDate(''); setEndDate(''); setDescription('')
     setCreating(false)
   }
 
-  const remove = (id: string, contestName: string) => {
+  const remove = async (id: string, contestName: string) => {
     if (contests.length === 1) return
     const count = tasks.filter(task => task.contestId === id).length
     if (window.confirm(`Supprimer « ${contestName} » et ses ${count} tâche${count > 1 ? 's' : ''} ? Cette action est définitive.`)) {
-      deleteContest(id)
+      await deleteContest(id)
     }
   }
 
@@ -1335,7 +1324,7 @@ function SettingsView() {
         <div><h2>Gestion des concours</h2><p>Créez un concours ou choisissez celui sur lequel travailler.</p></div>
         <button className="primary-btn" onClick={() => setCreating(true)}><Plus size={17} /> Nouveau concours</button>
       </div>
-      {creating && <form className="contest-form" onSubmit={submit}>
+    {creating && <form className="contest-form" onSubmit={event => void submit(event)}>
         <div className="form-grid">
           <label className="field"><span>Nom du concours</span><input autoFocus required value={name} onChange={e => setName(e.target.value)} placeholder="Concours d’attelage…" /></label>
           <label className="field"><span>Lieu</span><input required value={location} onChange={e => setLocation(e.target.value)} placeholder="Ville ou domaine" /></label>
@@ -1355,7 +1344,7 @@ function SettingsView() {
               <span><strong>{item.name}</strong><small>{item.location} · {formatDate(item.startDate)} — {taskCount} tâche{taskCount > 1 ? 's' : ''}</small></span>
               {isActive && <em>Actif</em>}
             </button>
-            <button className="contest-delete" disabled={contests.length === 1} title={contests.length === 1 ? 'Le dernier concours ne peut pas être supprimé' : 'Supprimer ce concours'} onClick={() => remove(item.id, item.name)}><Trash2 size={17} /></button>
+            <button className="contest-delete" disabled={contests.length === 1} title={contests.length === 1 ? 'Le dernier concours ne peut pas être supprimé' : 'Supprimer ce concours'} onClick={() => { void remove(item.id, item.name) }}><Trash2 size={17} /></button>
           </article>
         })}
       </div>

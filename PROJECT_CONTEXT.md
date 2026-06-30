@@ -15,9 +15,9 @@ basculement de la source de données à ce stade.
 Le travail en cours a déjà basculé l'écran de connexion et le chargement du
 snapshot métier sur Supabase après authentification. Les écritures métier du
 front sont migrées par lots pour les éléments principaux du concours
-(catégories, tâches, commentaires, messages, lectures et comptes membres).
-Le mode local doit rester disponible comme filet de sécurité tant que toutes
-les vues ne sont pas raccordées.
+(catégories, tâches, commentaires, messages, lectures, comptes membres et
+gestion des concours). Le mode local doit rester disponible comme filet de
+sécurité tant que toutes les vues ne sont pas raccordées.
 
 ## Utilisateurs et besoins
 
@@ -65,6 +65,8 @@ Le bénévole consulte ses tâches dans une interface simplifiée, met leur stat
 - comptes Auth basés sur un identifiant email technique invisible ; les
   utilisateurs continuent à sélectionner leur profil et ne saisissent pas
   d'email ;
+- en mode Supabase, aucune session ni donnée métier n'est conservée dans le
+  navigateur après rechargement ;
 - l'écran de connexion lit l'annuaire public Supabase ; les profils listés
   dépendent du concours sélectionné ;
 - les mutations principales du concours passent progressivement par Supabase ;
@@ -77,6 +79,8 @@ Le bénévole consulte ses tâches dans une interface simplifiée, met leur stat
   contient aucun concours ;
 - création et réinitialisation des comptes membres réservées à une Edge
   Function qui vérifie le rôle administrateur ;
+- création de concours et suppression de membre/concours désormais servies par
+  des Edge Functions authentifiées côté serveur ;
 - absence volontaire de dépendance UI ou de framework CSS.
 
 ## Règles métier observées
@@ -117,7 +121,8 @@ Le bénévole consulte ses tâches dans une interface simplifiée, met leur stat
 - aucune synchronisation distante active tant que les vues utilisent
   `localStorage` ;
 - le mode Supabase charge désormais les données distantes après connexion,
-  et plusieurs écritures métier sont déjà persistées à distance ;
+  et plusieurs écritures métier sont déjà persistées à distance sans écrire de
+  données métier dans `localStorage` ;
 - aucune confidentialité réelle des messages ou données face à un utilisateur
   ayant accès au navigateur ;
 - aucune récupération de mot de passe ;

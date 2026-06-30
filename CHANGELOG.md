@@ -37,15 +37,22 @@ applicative `0.1.0`.
   messages, notifications et audit ;
 - annuaire de connexion public limité, sans exposition des contacts ;
 - Edge Functions `bootstrap-admin` et `manage-member` déployées ;
+- Edge Functions `create-contest` et `delete-contest` pour la gestion serveur
+  des concours ;
+- suppression de membre côté serveur avec vérification de rôle et nettoyage des
+  rattachements ;
 - script interactif de création du premier concours et administrateur ;
 - couche frontend Supabase pour l'annuaire, Auth et la gestion des comptes,
   gardée derrière un mode de transition explicite.
 - écran de connexion Supabase alimenté par l'annuaire public du concours ;
 - chargement du snapshot métier depuis Supabase après authentification ;
 - mutations Supabase branchées pour catégories, tâches, commentaires,
-  messages, lectures et notifications ;
-- persistance de la sélection de concours et du profil courant dans la session
-  du navigateur pour le mode Supabase.
+  messages, lectures, notifications, création/suppression de concours et
+  gestion des membres ;
+- gestion en mémoire de la sélection de concours et du profil courant pendant
+  la session React en mode Supabase.
+- suppression de toute persistance navigateur en mode Supabase : plus de
+  `sessionStorage` ni de session Auth conservée entre rechargements.
 
 ### Vérifié
 

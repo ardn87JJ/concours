@@ -385,6 +385,12 @@ deno_version = 2
 [functions.bootstrap-admin]
 verify_jwt = false
 
+[functions.create-contest]
+verify_jwt = true
+
+[functions.delete-contest]
+verify_jwt = true
+
 [functions.manage-member]
 verify_jwt = true
 

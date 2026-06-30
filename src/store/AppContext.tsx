@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { demoData } from '../data/demo'
-import { changeOwnSupabasePassword, createMember, dataBackend, resetMemberPassword } from '../lib/supabaseApi'
+import { changeOwnSupabasePassword, createContest, createMember, dataBackend, deleteContest as deleteContestRemote, removeMember, resetMemberPassword } from '../lib/supabaseApi'
 import { createPasswordCredential } from '../lib/password'
 import { PASSWORD_VERSION } from '../lib/password'
 import { supabase } from '../lib/supabase'
@@ -27,16 +27,14 @@ interface AppContextValue extends AppData {
   initializePassword: (userId: string, password: string) => Promise<void>
   setUserPassword: (userId: string, password: string) => Promise<void>
   changeOwnPassword: (userId: string, password: string) => Promise<void>
-  addContest: (contest: Omit<Contest, 'id'>) => string
-  deleteContest: (id: string) => void
+  addContest: (contest: Omit<Contest, 'id'>) => Promise<string>
+  deleteContest: (id: string) => Promise<void>
   setActiveContestId: (id: string) => void
   setCurrentUserId: (id: string) => void
   resetDemo: () => void
 }
 
 const STORAGE_KEY = 'attelage-pilot-data-v1'
-const ACTIVE_CONTEST_KEY = 'attelage-active-contest'
-const CURRENT_USER_KEY = 'attelage-current-user'
 const AppContext = createContext<AppContextValue | null>(null)
 
 const audit = (contestId: string, actorId: string, event: Omit<AuditEvent, 'id' | 'contestId' | 'actorId' | 'createdAt'>): AuditEvent => ({
@@ -139,17 +137,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       const snapshot = await loadSupabaseAppData()
       if (cancelled) return
-      const activeContestId = sessionStorage.getItem(ACTIVE_CONTEST_KEY) ?? snapshot.activeContestId
-      const currentUserId = sessionStorage.getItem(CURRENT_USER_KEY) ?? snapshot.currentUserId
-      setData({
+      setData(current => ({
         ...snapshot,
-        activeContestId: snapshot.contests.some(contest => contest.id === activeContestId)
-          ? activeContestId
-          : snapshot.contests[0]?.id ?? '',
-        currentUserId: snapshot.users.some(user => user.id === currentUserId)
-          ? currentUserId
-          : snapshot.users[0]?.id ?? '',
-      })
+        activeContestId: snapshot.contests.some(contest => contest.id === current.activeContestId)
+          ? current.activeContestId
+          : snapshot.activeContestId,
+        currentUserId: snapshot.users.some(user => user.id === current.currentUserId)
+          ? current.currentUserId
+          : snapshot.currentUserId,
+      }))
       setReady(true)
     }
 
@@ -163,17 +159,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       const snapshot = await loadSupabaseAppData()
       if (cancelled) return
-      const activeContestId = sessionStorage.getItem(ACTIVE_CONTEST_KEY) ?? snapshot.activeContestId
-      const currentUserId = sessionStorage.getItem(CURRENT_USER_KEY) ?? snapshot.currentUserId
-      setData({
+      setData(current => ({
         ...snapshot,
-        activeContestId: snapshot.contests.some(contest => contest.id === activeContestId)
-          ? activeContestId
-          : snapshot.contests[0]?.id ?? '',
-        currentUserId: snapshot.users.some(user => user.id === currentUserId)
-          ? currentUserId
-          : snapshot.users[0]?.id ?? '',
-      })
+        activeContestId: snapshot.contests.some(contest => contest.id === current.activeContestId)
+          ? current.activeContestId
+          : snapshot.activeContestId,
+        currentUserId: snapshot.users.some(user => user.id === current.currentUserId)
+          ? current.currentUserId
+          : snapshot.currentUserId,
+      }))
       setReady(true)
     })
 
@@ -200,12 +194,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       document.removeEventListener('visibilitychange', syncFromStorage)
     }
   }, [])
-
-  useEffect(() => {
-    if (dataBackend !== 'supabase') return
-    sessionStorage.setItem(ACTIVE_CONTEST_KEY, data.activeContestId)
-    sessionStorage.setItem(CURRENT_USER_KEY, data.currentUserId)
-  }, [data.activeContestId, data.currentUserId])
 
   const reloadSupabaseSnapshot = async () => {
     const snapshot = await loadSupabaseAppData()
@@ -828,6 +816,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const user = current.users.find(item => item.id === id)
         if (actor?.role !== 'admin' || !user || user.id === current.currentUserId || user.contestId !== current.activeContestId) return current
         if (dataBackend === 'supabase') {
+          void (async () => {
+            await removeMember(current.activeContestId, id)
+            await reloadSupabaseSnapshot()
+          })()
           return current
         }
         const remainingAdmins = current.users.filter(item => item.contestId === current.activeContestId && item.role === 'admin' && item.id !== id)
@@ -1051,25 +1043,41 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return next
       })
     },
-    addContest: (contest: Omit<Contest, 'id'>) => {
+    addContest: async (contest: Omit<Contest, 'id'>) => {
       const id = crypto.randomUUID()
-      setData(current => {
-        const currentUser = getContestUsers(current).find(user => user.id === current.currentUserId)
-        if (currentUser?.role !== 'admin') return current
-        if (dataBackend === 'supabase') return current
-        return {
+      const currentUser = getContestUsers(data).find(user => user.id === data.currentUserId)
+      if (currentUser?.role !== 'admin') return id
+      if (dataBackend === 'supabase') {
+        const { contestId } = await createContest({
+          contestName: contest.name,
+          contestLocation: contest.location,
+          contestStartDate: contest.startDate,
+          contestEndDate: contest.endDate,
+          contestDescription: contest.description,
+        })
+        await reloadSupabaseSnapshot()
+        setData(current => ({
           ...current,
-          contests: [...current.contests, { ...contest, id }],
-          activeContestId: id,
-        }
-      })
+          activeContestId: contestId,
+        }))
+        return contestId
+      }
+      setData(current => ({
+        ...current,
+        contests: [...current.contests, { ...contest, id }],
+        activeContestId: id,
+      }))
       return id
     },
-    deleteContest: (id: string) => {
+    deleteContest: async (id: string) => {
+      const currentUser = getContestUsers(data).find(user => user.id === data.currentUserId)
+      if (currentUser?.role !== 'admin') return
+      if (dataBackend === 'supabase') {
+        await deleteContestRemote(id)
+        await reloadSupabaseSnapshot()
+        return
+      }
       setData(current => {
-        const currentUser = getContestUsers(current).find(user => user.id === current.currentUserId)
-        if (currentUser?.role !== 'admin') return current
-        if (dataBackend === 'supabase') return current
         if (current.contests.length <= 1 || !current.contests.some(contest => contest.id === id)) return current
         const contests = current.contests.filter(contest => contest.id !== id)
         const deletedUserIds = current.users.filter(user => user.contestId === id).map(user => user.id)

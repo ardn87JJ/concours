@@ -38,6 +38,14 @@ export interface CreateMemberInput {
   password: string
 }
 
+export interface CreateContestInput {
+  contestName: string
+  contestLocation: string
+  contestStartDate: string
+  contestEndDate: string
+  contestDescription?: string
+}
+
 interface LoginContestRow {
   id: string
   name: string
@@ -121,6 +129,15 @@ export async function createMember(input: CreateMemberInput) {
   return data as { userId: string }
 }
 
+export async function removeMember(contestId: string, userId: string) {
+  const { data, error } = await requireClient().functions.invoke('manage-member', {
+    body: { action: 'delete', contestId, userId },
+  })
+  if (error) throw error
+  if (data?.error) throw new Error(data.error)
+  return data as { userId: string }
+}
+
 export async function resetMemberPassword(contestId: string, userId: string, password: string) {
   const { data, error } = await requireClient().functions.invoke('manage-member', {
     body: { action: 'reset_password', contestId, userId, password },
@@ -128,6 +145,24 @@ export async function resetMemberPassword(contestId: string, userId: string, pas
   if (error) throw error
   if (data?.error) throw new Error(data.error)
   return data as { userId: string }
+}
+
+export async function createContest(input: CreateContestInput) {
+  const { data, error } = await requireClient().functions.invoke('create-contest', {
+    body: input,
+  })
+  if (error) throw error
+  if (data?.error) throw new Error(data.error)
+  return data as { contestId: string }
+}
+
+export async function deleteContest(contestId: string) {
+  const { data, error } = await requireClient().functions.invoke('delete-contest', {
+    body: { contestId },
+  })
+  if (error) throw error
+  if (data?.error) throw new Error(data.error)
+  return data as { contestId: string }
 }
 
 export async function changeOwnSupabasePassword(password: string) {

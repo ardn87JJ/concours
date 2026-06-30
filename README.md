@@ -164,9 +164,10 @@ données métier et les empreintes des mots de passe résident alors dans le
 `localStorage` du navigateur. La session active est conservée dans
 `sessionStorage` sous `attelage-session-user`.
 
-En mode Supabase, la source de vérité métier devient la base distante après
-connexion ; la session Auth et quelques identifiants de navigation restent en
-`sessionStorage` pour la durée du navigateur.
+En mode Supabase, aucune donnée métier ni session n'est conservée dans le
+navigateur : les mutations partent vers la base distante et l'interface ne
+garde qu'un état React temporaire pour rester fluide. Un rechargement impose
+donc une nouvelle connexion.
 
 Conséquences :
 

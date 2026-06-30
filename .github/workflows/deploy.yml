@@ -32,7 +32,14 @@ jobs:
         run: npm ci
 
       - name: Build
-        run: npm run build
+        run: |
+          test -n "$VITE_SUPABASE_URL"
+          test -n "$VITE_SUPABASE_PUBLISHABLE_KEY"
+          npm run build
+        env:
+          VITE_DATA_BACKEND: supabase
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
 
       - name: Disable Jekyll
         run: touch dist/.nojekyll

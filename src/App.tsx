@@ -16,6 +16,8 @@ import { PriorityBadge, StatusBadge } from './components/Badge'
 import { ProgressBar } from './components/ProgressBar'
 import { TaskCard } from './components/TaskCard'
 import { TaskModal } from './components/TaskModal'
+import { dataBackend, listLoginContests, listLoginProfiles, signInProfile, signOutProfile, type LoginContest, type LoginProfile } from './lib/supabaseApi'
+import { isSupabaseConfigured, supabase } from './lib/supabase'
 
 type View = 'dashboard' | 'tasks' | 'kanban' | 'timeline' | 'categories' | 'users' | 'history' | 'manager-tasks' | 'my-tasks' | 'progress' | 'messages' | 'settings' | 'account'
 
@@ -38,7 +40,9 @@ const navPersonal = [
 
 export default function App() {
   const app = useApp()
+  const isRemote = dataBackend === 'supabase' && isSupabaseConfigured && Boolean(supabase)
   const [authenticatedUserId, setAuthenticatedUserId] = useState<string | null>(() => sessionStorage.getItem('attelage-session-user'))
+  const [sessionUserId, setSessionUserId] = useState<string | null>(null)
   const [view, setView] = useState<View>('dashboard')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
@@ -46,10 +50,44 @@ export default function App() {
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [messageConversation, setMessageConversation] = useState<string>('general')
   const [messageNavigationKey, setMessageNavigationKey] = useState(0)
+
+  useEffect(() => {
+    if (!isRemote || !supabase) return
+    let cancelled = false
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!cancelled) setSessionUserId(session?.user.id ?? null)
+    })
+    const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!cancelled) setSessionUserId(session?.user.id ?? null)
+    })
+    return () => {
+      cancelled = true
+      subscription.subscription.unsubscribe()
+    }
+  }, [isRemote])
+
+  const authenticatedUserIdEffective = isRemote ? sessionUserId : authenticatedUserId
+
+  useEffect(() => {
+    if (!isRemote && authenticatedUserIdEffective && !app.users.find(user => user.id === authenticatedUserIdEffective)) {
+      sessionStorage.removeItem('attelage-session-user')
+      setAuthenticatedUserId(null)
+    }
+  }, [app.users, authenticatedUserIdEffective, isRemote])
+
+  useEffect(() => {
+    if (!isRemote) {
+      const managerAllowed = app.users.find(user => user.id === app.currentUserId)?.role === 'manager' && view === 'manager-tasks'
+      const currentUser = app.users.find(user => user.id === app.currentUserId) ?? app.users[0]
+      if (!currentUser) return
+      if (currentUser.role !== 'admin' && !managerAllowed && view !== 'my-tasks' && view !== 'progress' && view !== 'messages' && view !== 'account') setView('my-tasks')
+    }
+  }, [app.currentUserId, app.users, isRemote, view])
+
   const contest = app.contests.find(item => item.id === app.activeContestId)!
   const contestUsers = app.users.filter(user => user.contestId === contest.id)
   const currentUser = contestUsers.find(user => user.id === app.currentUserId) ?? contestUsers[0] ?? app.users.find(user => user.id === app.currentUserId)!
-  const authenticatedUser = app.users.find(user => user.id === authenticatedUserId)
+  const authenticatedUser = app.users.find(user => user.id === authenticatedUserIdEffective)
   const contestTasks = app.tasks.filter(task => task.contestId === contest.id)
   const completed = contestTasks.filter(task => task.status === 'done').length
   const progress = contestTasks.length ? Math.round((completed / contestTasks.length) * 100) : 0
@@ -74,12 +112,19 @@ export default function App() {
     }
   }, [app, contestUsers, contest.id])
 
-  useEffect(() => {
-    if (authenticatedUserId && !authenticatedUser) {
-      sessionStorage.removeItem('attelage-session-user')
-      setAuthenticatedUserId(null)
-    }
-  }, [authenticatedUser, authenticatedUserId])
+  if (isRemote && !authenticatedUserIdEffective) {
+    return <RemoteLoginScreen
+      onLogin={async (userId, contestId) => {
+        sessionStorage.setItem('attelage-session-user', userId)
+        sessionStorage.setItem('attelage-active-contest', contestId)
+        setSessionUserId(userId)
+      }}
+    />
+  }
+
+  if (isRemote && !app.ready) {
+    return <main className="login-screen"><section className="login-card"><header className="login-header"><div className="login-logo">A</div><span>ATTELAGE PILOT</span><h1>Chargement</h1><p>Connexion à Supabase en cours…</p></header></section></main>
+  }
 
   const login = (userId: string) => {
     app.setCurrentUserId(userId)
@@ -88,9 +133,16 @@ export default function App() {
     setView(app.users.find(user => user.id === userId)?.role === 'admin' ? 'dashboard' : 'my-tasks')
   }
 
-  const logout = () => {
+  const logout = async () => {
     sessionStorage.removeItem('attelage-session-user')
+    sessionStorage.removeItem('attelage-active-contest')
+    sessionStorage.removeItem('attelage-current-user')
     setAuthenticatedUserId(null)
+    if (isRemote && supabase) {
+      await signOutProfile()
+      setSessionUserId(null)
+      return
+    }
     setView('dashboard')
   }
 
@@ -347,6 +399,124 @@ function LoginScreen({
   </main>
 }
 
+function RemoteLoginScreen({ onLogin }: { onLogin: (userId: string, contestId: string) => Promise<void> | void }) {
+  const [contests, setContests] = useState<LoginContest[]>([])
+  const [profiles, setProfiles] = useState<LoginProfile[]>([])
+  const [selectedContestId, setSelectedContestId] = useState('')
+  const [search, setSearch] = useState('')
+  const [selectedProfile, setSelectedProfile] = useState<LoginProfile | null>(null)
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [loadingContests, setLoadingContests] = useState(true)
+  const [loadingProfiles, setLoadingProfiles] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoadingContests(true)
+    listLoginContests()
+      .then(items => {
+        if (cancelled) return
+        setContests(items)
+        setSelectedContestId(current => current || (items[0]?.id ?? ''))
+      })
+      .catch(error => {
+        if (!cancelled) setError(error instanceof Error ? error.message : 'Impossible de charger les concours.')
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingContests(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!selectedContestId) {
+      setProfiles([])
+      return
+    }
+    let cancelled = false
+    setLoadingProfiles(true)
+    setSelectedProfile(null)
+    setPassword('')
+    setError('')
+    listLoginProfiles(selectedContestId)
+      .then(items => {
+        if (!cancelled) setProfiles(items)
+      })
+      .catch(error => {
+        if (!cancelled) setError(error instanceof Error ? error.message : 'Impossible de charger les profils.')
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingProfiles(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [selectedContestId])
+
+  const filteredProfiles = profiles.filter(profile => profile.displayName.toLocaleLowerCase('fr').includes(search.toLocaleLowerCase('fr')))
+
+  const authenticate = async (event: FormEvent) => {
+    event.preventDefault()
+    if (!selectedProfile || !selectedContestId) return
+    setBusy(true)
+    setError('')
+    try {
+      await signInProfile(selectedProfile.id, password)
+      await onLogin(selectedProfile.id, selectedContestId)
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Connexion impossible.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return <main className="login-screen">
+    <section className="login-card">
+      <header className="login-header">
+        <div className="login-logo">A</div>
+        <span>ATTELAGE PILOT</span>
+        <h1>Bienvenue</h1>
+        <p>Sélectionnez votre concours, puis votre profil.</p>
+      </header>
+      <label className="login-contest">
+        <span>Concours</span>
+        <select value={selectedContestId} onChange={event => setSelectedContestId(event.target.value)} disabled={loadingContests}>
+          <option value="">{loadingContests ? 'Chargement…' : 'Sélectionner un concours…'}</option>
+          {contests.map(contest => <option key={contest.id} value={contest.id}>{contest.name}</option>)}
+        </select>
+      </label>
+      {selectedContestId
+        ? <>
+          <label className="login-search"><Search size={17} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Rechercher mon nom…" /></label>
+          <div className="profile-list">
+            {filteredProfiles.map(profile => <button key={profile.id} onClick={() => setSelectedProfile(profile)}>
+              <span><strong>{profile.displayName}</strong><small>{roleLabels[profile.role]}</small></span>
+              {profile.role === 'admin' && <em><ShieldCheck size={13} /> Admin</em>}
+              <ChevronRight size={20} />
+            </button>)}
+          </div>
+          {!loadingProfiles && !filteredProfiles.length && <p className="login-empty">Aucun profil trouvé pour ce concours.</p>}
+        </>
+        : <p className="login-empty">Choisissez d’abord le concours auquel vous participez.</p>}
+      <footer><UserRound size={16} /><span>Chaque profil est protégé par un mot de passe personnel.</span></footer>
+    </section>
+    {selectedProfile && <div className="login-password-backdrop" onMouseDown={event => event.target === event.currentTarget && setSelectedProfile(null)}>
+      <form className="login-password-dialog" onSubmit={event => void authenticate(event)}>
+        <button type="button" className="icon-btn password-close" onClick={() => setSelectedProfile(null)}><X size={19} /></button>
+        <span className="password-icon"><LockKeyhole size={24} /></span>
+        <h2>Connexion</h2>
+        <p>Saisissez le mot de passe de {selectedProfile.displayName}.</p>
+        <label className="field"><span>Mot de passe</span><input autoFocus required minLength={8} type="password" autoComplete="current-password" value={password} onChange={event => { setPassword(event.target.value); setError('') }} /></label>
+        {error && <div className="password-error">{error}</div>}
+        <button className="primary-btn password-submit" disabled={busy}>{busy ? 'Connexion…' : 'Se connecter'}</button>
+      </form>
+    </div>}
+  </main>
+}
+
 function NavButton({ item, active, onClick, count }: { item: { id: string; label: string; icon: typeof LayoutDashboard }; active: boolean; onClick: () => void; count?: number }) {
   const Icon = item.icon
   return <button className={active ? 'active' : ''} onClick={onClick}><Icon size={19} /><span>{item.label}</span>{count !== undefined && <em>{count}</em>}</button>
@@ -589,7 +759,7 @@ function UsersView({ tasks }: { tasks: Task[] }) {
       setPasswordError('Les deux mots de passe ne correspondent pas.')
       return
     }
-    const userId = addUser({ name, contact, role, managedCategoryIds: role === 'manager' ? managedCategoryIds : [], initials: name.split(' ').map(word => word[0]).join('').slice(0, 2).toUpperCase(), color })
+    const userId = await addUser({ name, contact, role, managedCategoryIds: role === 'manager' ? managedCategoryIds : [], initials: name.split(' ').map(word => word[0]).join('').slice(0, 2).toUpperCase(), color })
     await setUserPassword(userId, memberPassword)
     setName(''); setContact(''); setManagedCategoryIds([]); setColor('#476a9d'); setAdding(false)
     setMemberPassword(''); setMemberPasswordConfirmation(''); setPasswordError('')
@@ -724,7 +894,7 @@ function UsersView({ tasks }: { tasks: Task[] }) {
             }} title="Supprimer le profil"><Trash2 size={15} /></button>
           </div>
         </div>
-        <div><h2>{user.name}</h2><span>{roleLabels[user.role]}</span><p>{user.contact}</p><small className={user.passwordHash && user.passwordSalt ? 'password-ready' : 'password-missing'}>{user.passwordHash && user.passwordSalt ? 'Mot de passe configuré' : 'Mot de passe à configurer'}</small></div>
+        <div><h2>{user.name}</h2><span>{roleLabels[user.role]}</span><p>{user.contact}</p><small className={dataBackend === 'supabase' ? 'password-ready' : user.passwordHash && user.passwordSalt ? 'password-ready' : 'password-missing'}>{dataBackend === 'supabase' ? 'Mot de passe géré par Supabase' : user.passwordHash && user.passwordSalt ? 'Mot de passe configuré' : 'Mot de passe à configurer'}</small></div>
         {user.role === 'manager' && <div className="manager-category-assignment"><strong>Catégories responsables</strong><div>{categories.map(category => <button key={category.id} className={(user.managedCategoryIds ?? []).includes(category.id) ? 'selected' : ''} onClick={() => updateUser(user.id, { managedCategoryIds: (user.managedCategoryIds ?? []).includes(category.id) ? (user.managedCategoryIds ?? []).filter(id => id !== category.id) : [...(user.managedCategoryIds ?? []), category.id] })}>{category.icon} {category.name}</button>)}</div></div>}
         <div className="user-stats"><strong>{assigned.length}<small>tâches</small></strong><strong>{done}<small>terminées</small></strong></div><ProgressBar value={assigned.length ? Math.round(done / assigned.length * 100) : 0} compact />
       </article>
@@ -1042,6 +1212,7 @@ function MessagingView({ initialConversation = 'general' }: { initialConversatio
 function AccountView() {
   const { users, currentUserId, changeOwnPassword } = useApp()
   const currentUser = users.find(user => user.id === currentUserId)!
+  const isRemoteAuth = dataBackend === 'supabase'
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmation, setConfirmation] = useState('')
@@ -1051,20 +1222,22 @@ function AccountView() {
   const submit = async (event: FormEvent) => {
     event.preventDefault()
     setStatus('')
-    if (!currentUser.passwordHash || !currentUser.passwordSalt) {
-      setStatus('Demandez à un administrateur de définir votre premier mot de passe.')
-      return
-    }
     if (newPassword !== confirmation) {
       setStatus('Les deux nouveaux mots de passe ne correspondent pas.')
       return
     }
     setBusy(true)
     try {
-      const valid = await verifyPassword(currentPassword, currentUser.passwordHash, currentUser.passwordSalt)
-      if (!valid) {
-        setStatus('Le mot de passe actuel est incorrect.')
-        return
+      if (!isRemoteAuth) {
+        if (!currentUser.passwordHash || !currentUser.passwordSalt) {
+          setStatus('Demandez à un administrateur de définir votre premier mot de passe.')
+          return
+        }
+        const valid = await verifyPassword(currentPassword, currentUser.passwordHash, currentUser.passwordSalt)
+        if (!valid) {
+          setStatus('Le mot de passe actuel est incorrect.')
+          return
+        }
       }
       await changeOwnPassword(currentUser.id, newPassword)
       setCurrentPassword('')
@@ -1080,7 +1253,7 @@ function AccountView() {
     <header><Avatar user={currentUser} size="lg" /><div><h2>{currentUser.name}</h2><span>{roleLabels[currentUser.role]}</span><p>{currentUser.contact}</p></div></header>
     <form className="password-settings" onSubmit={event => void submit(event)}>
       <h3>Modifier mon mot de passe</h3>
-      <label className="field"><span>Mot de passe actuel</span><input required type="password" autoComplete="current-password" value={currentPassword} onChange={event => { setCurrentPassword(event.target.value); setStatus('') }} /></label>
+      {!isRemoteAuth && <label className="field"><span>Mot de passe actuel</span><input required type="password" autoComplete="current-password" value={currentPassword} onChange={event => { setCurrentPassword(event.target.value); setStatus('') }} /></label>}
       <label className="field"><span>Nouveau mot de passe</span><input required minLength={8} type="password" autoComplete="new-password" value={newPassword} onChange={event => { setNewPassword(event.target.value); setStatus('') }} /></label>
       <label className="field"><span>Confirmer le nouveau mot de passe</span><input required minLength={8} type="password" autoComplete="new-password" value={confirmation} onChange={event => { setConfirmation(event.target.value); setStatus('') }} /></label>
       {status && <div className={status.includes('mis à jour') ? 'password-success' : 'password-error'}>{status}</div>}

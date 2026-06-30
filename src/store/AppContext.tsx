@@ -1,10 +1,14 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { demoData } from '../data/demo'
+import { changeOwnSupabasePassword, createMember, dataBackend, resetMemberPassword } from '../lib/supabaseApi'
 import { createPasswordCredential } from '../lib/password'
 import { PASSWORD_VERSION } from '../lib/password'
+import { supabase } from '../lib/supabase'
+import { loadSupabaseAppData } from '../lib/supabaseData'
 import type { AppData, AuditEvent, Category, Comment, Contest, Message, Notification, Task, User } from '../types'
 
 interface AppContextValue extends AppData {
+  ready: boolean
   addTask: (task: Omit<Task, 'id' | 'createdAt' | 'comments'>) => void
   updateTask: (id: string, updates: Partial<Task>) => void
   deleteTask: (id: string) => void
@@ -12,7 +16,7 @@ interface AppContextValue extends AppData {
   addCategory: (category: Omit<Category, 'id'>) => void
   updateCategory: (id: string, updates: Partial<Category>) => void
   deleteCategory: (id: string) => void
-  addUser: (user: Omit<User, 'id' | 'contestId'>) => string
+  addUser: (user: Omit<User, 'id' | 'contestId'>) => Promise<string>
   addUsers: (users: Array<Omit<User, 'id' | 'contestId'>>) => void
   updateUser: (id: string, updates: Partial<User>) => void
   deleteUser: (id: string) => void
@@ -31,6 +35,8 @@ interface AppContextValue extends AppData {
 }
 
 const STORAGE_KEY = 'attelage-pilot-data-v1'
+const ACTIVE_CONTEST_KEY = 'attelage-active-contest'
+const CURRENT_USER_KEY = 'attelage-current-user'
 const AppContext = createContext<AppContextValue | null>(null)
 
 const audit = (contestId: string, actorId: string, event: Omit<AuditEvent, 'id' | 'contestId' | 'actorId' | 'createdAt'>): AuditEvent => ({
@@ -111,19 +117,80 @@ const loadData = (): AppData => {
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [data, setData] = useState<AppData>(loadData)
+  const [data, setData] = useState<AppData>(() => dataBackend === 'supabase' ? demoData : loadData())
+  const [ready, setReady] = useState(dataBackend !== 'supabase')
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+    if (dataBackend !== 'supabase') {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+    }
   }, [data])
+
+  useEffect(() => {
+    if (dataBackend !== 'supabase' || !supabase) return
+    const client = supabase
+    let cancelled = false
+
+    const hydrate = async () => {
+      const { data: { session } } = await client.auth.getSession()
+      if (!session) {
+        if (!cancelled) setReady(false)
+        return
+      }
+      const snapshot = await loadSupabaseAppData()
+      if (cancelled) return
+      const activeContestId = sessionStorage.getItem(ACTIVE_CONTEST_KEY) ?? snapshot.activeContestId
+      const currentUserId = sessionStorage.getItem(CURRENT_USER_KEY) ?? snapshot.currentUserId
+      setData({
+        ...snapshot,
+        activeContestId: snapshot.contests.some(contest => contest.id === activeContestId)
+          ? activeContestId
+          : snapshot.contests[0]?.id ?? '',
+        currentUserId: snapshot.users.some(user => user.id === currentUserId)
+          ? currentUserId
+          : snapshot.users[0]?.id ?? '',
+      })
+      setReady(true)
+    }
+
+    void hydrate()
+
+    const { data: subscription } = client.auth.onAuthStateChange(async (_event, session) => {
+      if (cancelled) return
+      if (!session) {
+        setReady(false)
+        return
+      }
+      const snapshot = await loadSupabaseAppData()
+      if (cancelled) return
+      const activeContestId = sessionStorage.getItem(ACTIVE_CONTEST_KEY) ?? snapshot.activeContestId
+      const currentUserId = sessionStorage.getItem(CURRENT_USER_KEY) ?? snapshot.currentUserId
+      setData({
+        ...snapshot,
+        activeContestId: snapshot.contests.some(contest => contest.id === activeContestId)
+          ? activeContestId
+          : snapshot.contests[0]?.id ?? '',
+        currentUserId: snapshot.users.some(user => user.id === currentUserId)
+          ? currentUserId
+          : snapshot.users[0]?.id ?? '',
+      })
+      setReady(true)
+    })
+
+    return () => {
+      cancelled = true
+      subscription.subscription.unsubscribe()
+    }
+  }, [])
 
   useEffect(() => {
     const syncFromStorage = () => {
       setData(loadData())
     }
     const handleStorage = (event: StorageEvent) => {
-      if (event.key === STORAGE_KEY) syncFromStorage()
+      if (dataBackend !== 'supabase' && event.key === STORAGE_KEY) syncFromStorage()
     }
+    if (dataBackend === 'supabase') return
     window.addEventListener('storage', handleStorage)
     window.addEventListener('focus', syncFromStorage)
     document.addEventListener('visibilitychange', syncFromStorage)
@@ -133,6 +200,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       document.removeEventListener('visibilitychange', syncFromStorage)
     }
   }, [])
+
+  useEffect(() => {
+    if (dataBackend !== 'supabase') return
+    sessionStorage.setItem(ACTIVE_CONTEST_KEY, data.activeContestId)
+    sessionStorage.setItem(CURRENT_USER_KEY, data.currentUserId)
+  }, [data.activeContestId, data.currentUserId])
 
   const actions = useMemo(() => ({
     addTask: (task: Omit<Task, 'id' | 'createdAt' | 'comments'>) =>
@@ -323,8 +396,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
           })],
         }
       }),
-    addUser: (user: Omit<User, 'id' | 'contestId'>) => {
+    addUser: async (user: Omit<User, 'id' | 'contestId'>) => {
       const id = crypto.randomUUID()
+      if (dataBackend === 'supabase') {
+        await createMember({
+          contestId: data.activeContestId,
+          name: user.name,
+          contact: user.contact,
+          role: user.role,
+          color: user.color,
+          managedCategoryIds: user.managedCategoryIds ?? [],
+          password: crypto.randomUUID(),
+        })
+        await loadSupabaseAppData().then(snapshot => {
+          setData(current => ({
+            ...snapshot,
+            activeContestId: current.activeContestId,
+            currentUserId: current.currentUserId,
+          }))
+        })
+        return id
+      }
       setData(current => {
         if (getContestUsers(current).find(item => item.id === current.currentUserId)?.role !== 'admin') return current
         return {
@@ -337,7 +429,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
       })
       return id
     },
-    addUsers: (users: Array<Omit<User, 'id' | 'contestId'>>) =>
+    addUsers: (users: Array<Omit<User, 'id' | 'contestId'>>) => {
+      if (dataBackend === 'supabase') {
+        void Promise.all(users.map(user => createMember({
+          contestId: data.activeContestId,
+          name: user.name,
+          contact: user.contact,
+          role: user.role,
+          color: user.color,
+          managedCategoryIds: user.managedCategoryIds ?? [],
+          password: crypto.randomUUID(),
+        }))).then(() => loadSupabaseAppData().then(snapshot => {
+          setData(current => ({
+            ...snapshot,
+            activeContestId: current.activeContestId,
+            currentUserId: current.currentUserId,
+          }))
+        }))
+        return
+      }
       setData(current => {
         if (getContestUsers(current).find(user => user.id === current.currentUserId)?.role !== 'admin') return current
         const additions = users.map(user => ({ ...user, id: crypto.randomUUID(), contestId: current.activeContestId }))
@@ -348,8 +458,45 @@ export function AppProvider({ children }: { children: ReactNode }) {
             action: 'import', entityType: 'user', entityId: additions[0]?.id ?? '', description: `a importé ${additions.length} profils`,
           })],
         }
-      }),
-    updateUser: (id: string, updates: Partial<User>) =>
+      })
+    },
+    updateUser: (id: string, updates: Partial<User>) => {
+      if (dataBackend === 'supabase') {
+        void (async () => {
+          const actor = getContestUsers(data).find(user => user.id === data.currentUserId)
+          const target = data.users.find(item => item.id === id)
+          if (actor?.role !== 'admin' || !target || target.contestId !== data.activeContestId || !supabase) return
+          const updatePayload: Record<string, unknown> = {}
+          if (updates.name !== undefined) updatePayload.display_name = updates.name
+          if (updates.contact !== undefined) updatePayload.contact = updates.contact
+          if (updates.initials !== undefined) updatePayload.initials = updates.initials
+          if (updates.color !== undefined) updatePayload.color = updates.color
+          if (Object.keys(updatePayload).length) {
+            await supabase.from('profiles').update(updatePayload).eq('id', id)
+          }
+          if (updates.role !== undefined) {
+            await supabase.from('contest_members').update({ role: updates.role }).eq('contest_id', data.activeContestId).eq('user_id', id)
+          }
+          if (updates.managedCategoryIds) {
+            await supabase.from('manager_categories').delete().eq('contest_id', data.activeContestId).eq('user_id', id)
+            if (updates.role === 'manager' && updates.managedCategoryIds.length) {
+              await supabase.from('manager_categories').insert(updates.managedCategoryIds.map(categoryId => ({
+                contest_id: data.activeContestId,
+                category_id: categoryId,
+                user_id: id,
+              })))
+            }
+          }
+          await loadSupabaseAppData().then(snapshot => {
+            setData(current => ({
+              ...snapshot,
+              activeContestId: current.activeContestId,
+              currentUserId: current.currentUserId,
+            }))
+          })
+        })()
+        return
+      }
       setData(current => {
         if (getContestUsers(current).find(user => user.id === current.currentUserId)?.role !== 'admin') return current
         const user = current.users.find(item => item.id === id)
@@ -361,7 +508,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
             action: 'update', entityType: 'user', entityId: id, description: `a modifié le profil « ${user.name} »`,
           })],
         }
-      }),
+      })
+    },
     deleteUser: (id: string) =>
       setData(current => {
         const actor = getContestUsers(current).find(user => user.id === current.currentUserId)
@@ -438,6 +586,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       })),
     initializePassword: async (userId: string, password: string) => {
       if (password.length < 8) return
+      if (dataBackend === 'supabase') return
       const credential = await createPasswordCredential(password)
       setData(current => {
         const target = current.users.find(user => user.id === userId)
@@ -454,6 +603,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
     setUserPassword: async (userId: string, password: string) => {
       if (password.length < 8) return
+      if (dataBackend === 'supabase') {
+        await resetMemberPassword(data.activeContestId, userId, password)
+        return
+      }
       const credential = await createPasswordCredential(password)
       setData(current => {
         const actor = getContestUsers(current).find(user => user.id === current.currentUserId)
@@ -472,6 +625,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
     changeOwnPassword: async (userId: string, password: string) => {
       if (password.length < 8) return
+      if (dataBackend === 'supabase') {
+        await changeOwnSupabasePassword(password)
+        return
+      }
       const credential = await createPasswordCredential(password)
       setData(current => {
         const actor = getContestUsers(current).find(user => user.id === current.currentUserId)
@@ -534,9 +691,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setData(current => getContestUsers(current).find(user => user.id === current.currentUserId)?.role === 'admin'
         ? demoData
         : current),
-  }), [])
+  }), [data])
 
-  return <AppContext.Provider value={{ ...data, ...actions }}>{children}</AppContext.Provider>
+  return <AppContext.Provider value={{ ready, ...data, ...actions }}>{children}</AppContext.Provider>
 }
 
 // Le hook partage volontairement le module du provider pour garder l'API du store groupée.

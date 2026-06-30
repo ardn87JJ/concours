@@ -62,6 +62,14 @@ npm run lint
 - rôles `admin`, `manager`, `volunteer` ;
 - interface en français ;
 - déploiement GitHub Pages depuis `main` ;
+- migrations Supabase versionnées dans `supabase/migrations` ;
+- ne jamais exposer une clé `sb_secret_`, un mot de passe PostgreSQL ou un
+  token personnel dans le frontend ou Git ;
+- toutes les tables Supabase exposées doivent conserver RLS activé ;
+- toute nouvelle opération frontend Supabase doit être couverte par une
+  politique RLS ou une Edge Function authentifiée ;
+- ne pas activer `VITE_DATA_BACKEND=supabase` avant que toutes les mutations
+  visibles dans le parcours concerné soient raccordées ;
 - conventions détaillées dans `ARCHITECTURE.md`.
 
 ## Points nécessitant une validation humaine

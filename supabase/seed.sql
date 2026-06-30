@@ -1,0 +1,2 @@
+-- Les données de démonstration seront migrées après la validation du schéma
+-- et la création du premier compte administrateur Supabase.

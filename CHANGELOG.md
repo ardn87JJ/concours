@@ -60,6 +60,8 @@ applicative `0.1.0`.
 
 ### Corrigé
 
+- Safari sur iPhone ne zoome plus automatiquement la page lors de la saisie du
+  mot de passe ou d’un formulaire mobile, et la largeur reste bornée au viewport.
 - l'import CSV attend désormais la création effective des profils Supabase,
   conserve les lignes échouées et affiche les erreurs au lieu de confirmer
   prématurément l'opération.

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react'
 import {
   AlertOctagon, BarChart3, CalendarDays, CalendarPlus, Check, CheckCircle2, ChevronDown, ChevronRight,
   CircleDot, Clock3, Columns3, Download, FileSpreadsheet, Flag, GanttChart,
@@ -113,6 +113,9 @@ export default function App() {
   const currentUser = contestUsers.find(user => user.id === app.currentUserId) ?? contestUsers[0] ?? app.users.find(user => user.id === app.currentUserId)!
   const authenticatedUser = app.users.find(user => user.id === authenticatedUserIdEffective)
   const contestTasks = app.tasks.filter(task => task.contestId === contest.id)
+  const activeSelectedTask = selectedTask
+    ? contestTasks.find(task => task.id === selectedTask.id) ?? selectedTask
+    : null
   const completed = contestTasks.filter(task => task.status === 'done').length
   const progress = contestTasks.length ? Math.round((completed / contestTasks.length) * 100) : 0
   const isAdmin = currentUser.role === 'admin'
@@ -185,6 +188,7 @@ export default function App() {
   }
 
   const navigate = (next: View) => {
+    if (next !== view) setSelectedTask(null)
     const managerAllowed = currentUser.role === 'manager' && next === 'manager-tasks'
     const personalViewAllowed = next === 'my-tasks' || next === 'messages' || next === 'account' ||
       (currentUser.role !== 'volunteer' && next === 'progress')
@@ -302,7 +306,7 @@ export default function App() {
             {isAdmin && view !== 'dashboard' && view !== 'settings' && view !== 'messages' && view !== 'progress' && <button className="primary-btn mobile-add" onClick={() => setCreatingTask(true)}><Plus size={18} /> Ajouter</button>}
           </header>
           {view === 'dashboard' && <Dashboard tasks={contestTasks} onOpen={setSelectedTask} onNavigate={navigate} />}
-          {view === 'tasks' && <TasksView tasks={contestTasks} onOpen={setSelectedTask} />}
+          {view === 'tasks' && <TasksView tasks={contestTasks} selectedTask={activeSelectedTask} onOpen={setSelectedTask} onClose={() => setSelectedTask(null)} />}
           {view === 'kanban' && <KanbanView tasks={contestTasks} onOpen={setSelectedTask} />}
           {view === 'timeline' && <TimelineView tasks={contestTasks} onOpen={setSelectedTask} />}
           {view === 'categories' && <CategoriesView tasks={contestTasks} />}
@@ -322,7 +326,7 @@ export default function App() {
         {currentUser.role !== 'volunteer' && <button className={view === 'progress' ? 'active' : ''} onClick={() => navigate('progress')}><BarChart3 size={21} /><span>Avancement</span></button>}
         <button className={view === 'messages' ? 'active' : ''} onClick={openMessagesHome}><MessageCircle size={21} /><span>Messagerie</span></button>
       </nav>}
-      {(selectedTask || creatingTask) && <TaskModal task={selectedTask ?? undefined} onClose={() => { setSelectedTask(null); setCreatingTask(false) }} />}
+      {((activeSelectedTask && view !== 'tasks') || creatingTask) && <TaskModal task={creatingTask ? undefined : activeSelectedTask ?? undefined} onClose={() => { setSelectedTask(null); setCreatingTask(false) }} />}
     </div>
   )
 }
@@ -636,8 +640,9 @@ function PanelHeader({ title, action, onAction }: { title: string; action: strin
   return <header className="panel-header"><h2>{title}</h2><button onClick={onAction}>{action} →</button></header>
 }
 
-function TasksView({ tasks, onOpen }: { tasks: Task[]; onOpen: (task: Task) => void }) {
+function TasksView({ tasks, selectedTask, onOpen, onClose }: { tasks: Task[]; selectedTask: Task | null; onOpen: (task: Task) => void; onClose: () => void }) {
   const { categories, users } = useApp()
+  const editorRef = useRef<HTMLDivElement>(null)
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
   const [priority, setPriority] = useState('')
@@ -648,6 +653,11 @@ function TasksView({ tasks, onOpen }: { tasks: Task[]; onOpen: (task: Task) => v
     (!status || task.status === status) && (!priority || task.priority === priority) &&
     (!category || task.categoryId === category) && (!assignee || task.assigneeIds.includes(assignee)))
 
+  useEffect(() => {
+    if (!selectedTask) return
+    requestAnimationFrame(() => editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+  }, [selectedTask])
+
   return <div className="panel table-panel">
     <div className="filters">
       <label className="search-field"><Search size={17} /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher…" /></label>
@@ -656,6 +666,7 @@ function TasksView({ tasks, onOpen }: { tasks: Task[]; onOpen: (task: Task) => v
       <select value={category} onChange={e => setCategory(e.target.value)}><option value="">Toutes catégories</option>{categories.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
       <select value={assignee} onChange={e => setAssignee(e.target.value)}><option value="">Toute l’équipe</option>{users.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
     </div>
+    {selectedTask && <div ref={editorRef}><TaskModal key={selectedTask.id} task={selectedTask} embedded onClose={onClose} /></div>}
     <div className="result-count">{filtered.length} tâche{filtered.length > 1 ? 's' : ''}</div>
     <div className="task-table">
       <div className="table-head"><span>Tâche</span><span>Statut</span><span>Priorité</span><span>Échéance</span><span>Assignée à</span></div>

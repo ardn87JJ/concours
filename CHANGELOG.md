@@ -68,6 +68,8 @@ applicative `0.1.0`.
 
 ### Corrigé
 
+- dans la vue administrateur « Toutes les tâches », un clic ouvre désormais la
+  fiche d’édition directement dans la page au lieu d’une fenêtre modale.
 - le changement de concours conserve désormais le profil connecté lorsqu’il
   appartient au concours cible, au lieu de sélectionner arbitrairement le
   premier membre et de perdre les droits d’administration.

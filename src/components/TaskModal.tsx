@@ -9,9 +9,10 @@ import { priorityLabels, statusLabels } from '../lib/format'
 interface Props {
   task?: Task
   onClose: () => void
+  embedded?: boolean
 }
 
-export function TaskModal({ task, onClose }: Props) {
+export function TaskModal({ task, onClose, embedded = false }: Props) {
   const { activeContestId, contests, categories, users, currentUserId, addTask, updateTask, deleteTask, addComment } = useApp()
   const currentUser = users.find(user => user.id === currentUserId)
   const contest = contests.find(item => item.id === activeContestId)
@@ -47,11 +48,10 @@ export function TaskModal({ task, onClose }: Props) {
   const toggleAssignee = (id: string) =>
     setAssigneeIds(current => current.includes(id) ? current.filter(item => item !== id) : [...current, id])
 
-  return (
-    <div className="modal-backdrop" onMouseDown={event => event.target === event.currentTarget && onClose()}>
-      <div className="modal">
+  const content = (
+      <div className={`modal ${embedded ? 'embedded-task' : ''}`}>
         <header className="modal-header">
-          <div><span className="eyebrow">{task ? 'Détail de la tâche' : 'Nouvelle tâche'}</span><h2>{task ? task.title : 'Créer une tâche'}</h2></div>
+          <div><span className="eyebrow">{task ? embedded ? 'Modification dans la page' : 'Détail de la tâche' : 'Nouvelle tâche'}</span><h2>{task ? task.title : 'Créer une tâche'}</h2></div>
           <button className="icon-btn" onClick={onClose} aria-label="Fermer"><X size={21} /></button>
         </header>
         <form onSubmit={submit}>
@@ -101,6 +101,13 @@ export function TaskModal({ task, onClose }: Props) {
           </footer>
         </form>
       </div>
+  )
+
+  if (embedded) return <div className="task-inline-editor">{content}</div>
+
+  return (
+    <div className="modal-backdrop" onMouseDown={event => event.target === event.currentTarget && onClose()}>
+      {content}
     </div>
   )
 }

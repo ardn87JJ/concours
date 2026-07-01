@@ -8,6 +8,10 @@ applicative `0.1.0`.
 
 ### Ajouté
 
+- vue bénévole repensée pour mobile avec cartes colorées, statistiques lisibles
+  et détail des tâches dépliable directement dans la liste ;
+- commandes tactiles de statut, commentaires et ajout au calendrier intégrés
+  au détail déplié des tâches bénévoles.
 - mémoire projet pérenne avec contexte, architecture, roadmap et consignes Codex ;
 - documentation des prérequis, scripts, flux, conventions et limites ;
 - inventaire des risques techniques et des validations manuelles attendues.

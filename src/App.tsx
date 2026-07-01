@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from 'react'
 import {
-  AlertOctagon, BarChart3, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronRight,
+  AlertOctagon, BarChart3, CalendarDays, CalendarPlus, Check, CheckCircle2, ChevronDown, ChevronRight,
   CircleDot, Clock3, Columns3, Download, FileSpreadsheet, Flag, GanttChart,
   ArrowLeft, Bell, Hash, History, LayoutDashboard, ListTodo, LockKeyhole,
   LogOut, Menu, MessageCircle, Pencil, Plus, RotateCcw, Search, Send, Settings, ShieldCheck,
@@ -8,9 +8,10 @@ import {
 } from 'lucide-react'
 import { useApp } from './store/AppContext'
 import type { Contest, Task, TaskStatus, User, UserRole } from './types'
-import { compareTaskDeadlines, daysUntil, formatDate, formatDeadline, isOverdue, roleLabels, statusLabels } from './lib/format'
+import { compareTaskDeadlines, daysUntil, formatDate, formatDeadline, isOverdue, priorityLabels, roleLabels, statusLabels } from './lib/format'
 import { membersCsvTemplate, parseMembersCsv, type CsvMember } from './lib/csv'
 import { verifyPassword } from './lib/password'
+import { downloadTaskCalendar } from './lib/calendar'
 import { Avatar, AvatarGroup } from './components/Avatar'
 import { PriorityBadge, StatusBadge } from './components/Badge'
 import { ProgressBar } from './components/ProgressBar'
@@ -46,6 +47,7 @@ export default function App() {
   const [view, setView] = useState<View>('dashboard')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null)
   const [creatingTask, setCreatingTask] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [messageConversation, setMessageConversation] = useState<string>('general')
@@ -93,6 +95,16 @@ export default function App() {
     message.contestId === contest.id &&
     !message.readByIds.includes(currentUser.id) &&
     (!message.recipientId || message.recipientId === currentUser.id)).length
+
+  const openTask = (task: Task) => {
+    if (currentUser.role === 'volunteer') {
+      setSelectedTask(null)
+      setExpandedTaskId(current => current === task.id ? null : task.id)
+      setView('my-tasks')
+      return
+    }
+    setSelectedTask(task)
+  }
 
   useEffect(() => {
     const managerAllowed = currentUser.role === 'manager' && view === 'manager-tasks'
@@ -231,7 +243,7 @@ export default function App() {
             </div>}
           <button className="notification-button" onClick={() => setNotificationsOpen(current => !current)}><Bell size={18} />{app.notifications.some(notification => notification.userId === currentUser.id && !notification.read) && <i />}</button>
           <button className="logout-btn" onClick={logout} title="Se déconnecter"><LogOut size={18} /><span>Déconnexion</span></button>
-          {notificationsOpen && <NotificationCenter onClose={() => setNotificationsOpen(false)} onOpenTask={task => { setSelectedTask(task); setNotificationsOpen(false) }} onOpenMessage={messageId => {
+          {notificationsOpen && <NotificationCenter onClose={() => setNotificationsOpen(false)} onOpenTask={task => { openTask(task); setNotificationsOpen(false) }} onOpenMessage={messageId => {
             const message = app.messages.find(item => item.id === messageId)
             const target = message?.recipientId
               ? message.senderId === authenticatedUser.id ? message.recipientId : message.senderId
@@ -256,7 +268,7 @@ export default function App() {
           {view === 'users' && <UsersView tasks={contestTasks} />}
           {view === 'history' && isAdmin && <HistoryView />}
           {view === 'manager-tasks' && currentUser.role === 'manager' && <ManagerTasksView tasks={contestTasks} onOpen={setSelectedTask} />}
-          {view === 'my-tasks' && <MyTasks tasks={contestTasks.filter(task => task.assigneeIds.includes(currentUser.id))} onOpen={setSelectedTask} />}
+          {view === 'my-tasks' && <MyTasks tasks={contestTasks.filter(task => task.assigneeIds.includes(currentUser.id))} onOpen={openTask} expandedTaskId={expandedTaskId} />}
           {view === 'progress' && <UserProgressView tasks={contestTasks} />}
           {view === 'messages' && <MessagingView key={messageNavigationKey} initialConversation={messageConversation} viewerUserId={authenticatedUser.id} />}
           {isAdmin && view === 'settings' && <SettingsView />}
@@ -990,7 +1002,7 @@ function HistoryView() {
   </section>
 }
 
-function MyTasks({ tasks, onOpen }: { tasks: Task[]; onOpen: (task: Task) => void }) {
+function MyTasks({ tasks, onOpen, expandedTaskId }: { tasks: Task[]; onOpen: (task: Task) => void; expandedTaskId: string | null }) {
   const { updateTask, addComment, users, categories, currentUserId } = useApp()
   const [blockingTask, setBlockingTask] = useState<Task | null>(null)
   const [blockReason, setBlockReason] = useState('')
@@ -998,25 +1010,34 @@ function MyTasks({ tasks, onOpen }: { tasks: Task[]; onOpen: (task: Task) => voi
   const isSimpleView = currentUser?.role !== 'admin'
   const open = tasks.filter(task => task.status !== 'done')
   const done = tasks.filter(task => task.status === 'done')
+  const inProgress = tasks.filter(task => task.status === 'in_progress').length
+  const blocked = tasks.filter(task => task.status === 'blocked').length
   const progress = tasks.length ? Math.round(done.length / tasks.length * 100) : 0
 
   if (isSimpleView) return <div className="simple-user-tasks">
     <header className="simple-greeting">
       <span>Bonjour {currentUser?.name.split(' ')[0]}</span>
       <h2>{open.length ? `Vous avez ${open.length} tâche${open.length > 1 ? 's' : ''} à faire` : 'Vous êtes à jour'}</h2>
-      <div><ProgressBar value={progress} compact /><small>{done.length}/{tasks.length} terminées</small></div>
+      <div className="simple-progress"><ProgressBar value={progress} compact /><small>{done.length}/{tasks.length} terminées</small></div>
+      <div className="simple-task-overview">
+        <span className="overview-progress"><CircleDot size={16} /><strong>{inProgress}</strong> en cours</span>
+        <span className="overview-blocked"><AlertOctagon size={16} /><strong>{blocked}</strong> bloquée{blocked > 1 ? 's' : ''}</span>
+        <span className="overview-done"><CheckCircle2 size={16} /><strong>{done.length}</strong> terminée{done.length > 1 ? 's' : ''}</span>
+      </div>
     </header>
     <section>
       <h3>À faire</h3>
       <div className="simple-user-list">
         {open.sort(compareTaskDeadlines).map(task => {
           const category = categories.find(item => item.id === task.categoryId)
-          return <article key={task.id} className={isOverdue(task) ? 'overdue' : ''} style={{ '--task-color': category?.color } as CSSProperties}>
-          <button className="simple-task-open" onClick={() => onOpen(task)}>
+          const expanded = expandedTaskId === task.id
+          return <article key={task.id} className={`${isOverdue(task) ? 'overdue ' : ''}${expanded ? 'expanded' : ''}`} style={{ '--task-color': category?.color } as CSSProperties}>
+          <button className="simple-task-open" onClick={() => onOpen(task)} aria-expanded={expanded} aria-controls={`volunteer-task-${task.id}`}>
             <span className={`simple-status status-${task.status}`}><i /></span>
             <span><em style={{ color: category?.color }}>{category?.icon} {category?.name}</em><strong>{task.title}</strong><small className={isOverdue(task) ? 'overdue-text' : ''}><CalendarDays size={15} /> {isOverdue(task) ? 'En retard · ' : ''}{formatDeadline(task)}</small></span>
-            <ChevronRight size={20} />
+            <ChevronRight className="simple-task-chevron" size={20} />
           </button>
+          {expanded && <VolunteerTaskDetails task={task} onBlock={() => { setBlockingTask(task); setBlockReason('') }} />}
           <div className="simple-task-actions">
             <button className="simple-block" onClick={() => { setBlockingTask(task); setBlockReason('') }}><AlertOctagon size={18} /> Je suis bloqué</button>
             <button className="simple-complete" onClick={() => updateTask(task.id, { status: 'done' })}><Check size={19} /> C’est terminé</button>
@@ -1025,7 +1046,16 @@ function MyTasks({ tasks, onOpen }: { tasks: Task[]; onOpen: (task: Task) => voi
         {!open.length && <div className="all-done"><CheckCircle2 size={34} /><strong>Tout est terminé</strong><span>Vous n’avez aucune action en attente.</span></div>}
       </div>
     </section>
-    {done.length > 0 && <details className="simple-completed"><summary>{done.length} tâche{done.length > 1 ? 's' : ''} terminée{done.length > 1 ? 's' : ''}</summary>{done.map(task => <button key={task.id} onClick={() => onOpen(task)}><Check size={16} />{task.title}</button>)}</details>}
+    {done.length > 0 && <details className="simple-completed" open={Boolean(done.some(task => task.id === expandedTaskId)) || undefined}>
+      <summary>{done.length} tâche{done.length > 1 ? 's' : ''} terminée{done.length > 1 ? 's' : ''}</summary>
+      {done.map(task => {
+        const expanded = expandedTaskId === task.id
+        return <div className={`simple-completed-task ${expanded ? 'expanded' : ''}`} key={task.id}>
+          <button onClick={() => onOpen(task)} aria-expanded={expanded} aria-controls={`volunteer-task-${task.id}`}><Check size={16} /><span>{task.title}</span><ChevronRight className="simple-task-chevron" size={18} /></button>
+          {expanded && <VolunteerTaskDetails task={task} onBlock={() => { setBlockingTask(task); setBlockReason('') }} />}
+        </div>
+      })}
+    </details>}
     {blockingTask && <div className="block-dialog-backdrop" onMouseDown={event => event.target === event.currentTarget && setBlockingTask(null)}>
       <form className="block-dialog" onSubmit={event => {
         event.preventDefault()
@@ -1052,6 +1082,57 @@ function MyTasks({ tasks, onOpen }: { tasks: Task[]; onOpen: (task: Task) => voi
     {done.length > 0 && <section><div className="my-section-title"><h2>Terminées</h2><span>{done.length}</span></div><div className="completed-list">{done.map(task => <button key={task.id} onClick={() => onOpen(task)}><CheckCircle2 size={21} /><span>{task.title}</span><small>{formatDeadline(task)}</small></button>)}</div></section>}
     {!tasks.length && <EmptyState text="Aucune tâche ne vous est assignée." />}
   </div>
+}
+
+function VolunteerTaskDetails({ task, onBlock }: { task: Task; onBlock: () => void }) {
+  const { addComment, updateTask, users, categories, contests, activeContestId } = useApp()
+  const [comment, setComment] = useState('')
+  const category = categories.find(item => item.id === task.categoryId)
+  const contest = contests.find(item => item.id === activeContestId)
+
+  const submitComment = (event: FormEvent) => {
+    event.preventDefault()
+    const text = comment.trim()
+    if (!text) return
+    addComment(task.id, text)
+    setComment('')
+  }
+
+  return <section className="volunteer-task-details" id={`volunteer-task-${task.id}`}>
+    <div className="volunteer-detail-intro">
+      <span>Votre mission</span>
+      <p>{task.description || 'Aucune consigne supplémentaire pour cette tâche.'}</p>
+    </div>
+    <div className="volunteer-detail-grid">
+      <div><span className="volunteer-detail-icon" style={{ background: `${category?.color ?? '#39745c'}18` }}>{category?.icon ?? '📌'}</span><span><small>Catégorie</small><strong>{category?.name ?? 'Sans catégorie'}</strong></span></div>
+      <div><span className="volunteer-detail-icon detail-calendar"><CalendarDays size={19} /></span><span><small>Échéance</small><strong>{formatDeadline(task)}</strong></span></div>
+      <div><span className="volunteer-detail-icon detail-priority"><Flag size={19} /></span><span><small>Priorité</small><strong>{priorityLabels[task.priority]}</strong></span></div>
+    </div>
+    <div className="volunteer-status">
+      <div><strong>Où en êtes-vous ?</strong><small>Votre équipe voit immédiatement le changement.</small></div>
+      <div>
+        <button className={task.status === 'todo' ? 'active' : ''} onClick={() => updateTask(task.id, { status: 'todo' })}><ListTodo size={17} /> À faire</button>
+        <button className={task.status === 'in_progress' ? 'active' : ''} onClick={() => updateTask(task.id, { status: 'in_progress' })}><CircleDot size={17} /> En cours</button>
+        <button className={task.status === 'blocked' ? 'active blocked' : ''} onClick={onBlock}><AlertOctagon size={17} /> Bloqué</button>
+        <button className={task.status === 'done' ? 'active done' : ''} onClick={() => updateTask(task.id, { status: 'done' })}><CheckCircle2 size={17} /> Terminé</button>
+      </div>
+    </div>
+    <section className="volunteer-comments">
+      <header><MessageCircle size={19} /><strong>Échanges sur cette tâche</strong><span>{task.comments.length}</span></header>
+      <div className="volunteer-comment-list">
+        {task.comments.map(item => {
+          const author = users.find(user => user.id === item.authorId)
+          return <article key={item.id}><Avatar user={author} size="sm" /><div><strong>{author?.name ?? 'Membre'}</strong><time>{new Date(item.createdAt).toLocaleDateString('fr-FR')}</time><p>{item.text}</p></div></article>
+        })}
+        {!task.comments.length && <p className="volunteer-no-comment">Aucun échange pour le moment. Vous pouvez poser une question ci-dessous.</p>}
+      </div>
+      <form className="volunteer-comment-form" onSubmit={submitComment}>
+        <input value={comment} onChange={event => setComment(event.target.value)} placeholder="Écrire une question ou une information…" aria-label="Votre commentaire" />
+        <button disabled={!comment.trim()} aria-label="Envoyer le commentaire"><Send size={18} /><span>Envoyer</span></button>
+      </form>
+    </section>
+    {contest && <button className="volunteer-calendar" onClick={() => downloadTaskCalendar(task, contest, category?.name)}><CalendarPlus size={18} /> Ajouter cette tâche à mon calendrier</button>}
+  </section>
 }
 
 function UserProgressView({ tasks }: { tasks: Task[] }) {

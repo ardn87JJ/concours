@@ -66,6 +66,11 @@ applicative `0.1.0`.
 - les prérequêtes CORS des Edge Functions acceptent tous les en-têtes envoyés
   automatiquement par `supabase-js`, notamment `x-client-info`, afin que les
   créations de membres atteignent effectivement le serveur.
+- les profils importés conservent désormais un état « mot de passe à
+  initialiser » ; leur première connexion vérifie le contact importé avant de
+  permettre la création du mot de passe personnel.
+- la création manuelle d’un membre utilise désormais l’identifiant Supabase
+  réellement créé avant de définir son mot de passe initial.
 
 ### Vérifié
 

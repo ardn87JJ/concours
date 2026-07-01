@@ -703,7 +703,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     addUser: async (user: Omit<User, 'id' | 'contestId'>) => {
       const id = crypto.randomUUID()
       if (dataBackend === 'supabase') {
-        await createMember({
+        const { userId } = await createMember({
           contestId: data.activeContestId,
           name: user.name,
           contact: user.contact,
@@ -719,7 +719,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             currentUserId: current.currentUserId,
           }))
         })
-        return id
+        return userId
       }
       setData(current => {
         if (getContestUsers(current).find(item => item.id === current.currentUserId)?.role !== 'admin') return current
@@ -1039,6 +1039,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (password.length < 8) return
       if (dataBackend === 'supabase') {
         await resetMemberPassword(data.activeContestId, userId, password)
+        await reloadSupabaseSnapshot()
         return
       }
       const credential = await createPasswordCredential(password)

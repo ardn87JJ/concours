@@ -25,6 +25,7 @@ create table public.profiles (
   contact text not null default '',
   initials text not null check (length(initials) between 1 and 3),
   color text not null default '#476a9d',
+  password_initialized boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

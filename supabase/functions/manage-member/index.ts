@@ -113,6 +113,11 @@ Deno.serve(async request => {
         password: payload.password,
       })
       if (error) throw error
+      const { error: profileError } = await admin
+        .from('profiles')
+        .update({ password_initialized: true })
+        .eq('id', payload.userId)
+      if (profileError) throw profileError
       return jsonResponse({ userId: payload.userId })
     }
 
@@ -136,6 +141,7 @@ Deno.serve(async request => {
       contact: payload.contact?.trim() ?? '',
       initials: initials(payload.name),
       color: payload.color || '#476a9d',
+      password_initialized: false,
     })
     const { error: memberError } = profileError
       ? { error: profileError }

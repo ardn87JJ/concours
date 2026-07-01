@@ -27,6 +27,7 @@ export interface User {
   initials: string
   color: string
   managedCategoryIds?: string[]
+  passwordInitialized?: boolean
   passwordHash?: string
   passwordSalt?: string
   passwordVersion?: number

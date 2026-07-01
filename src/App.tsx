@@ -16,7 +16,7 @@ import { PriorityBadge, StatusBadge } from './components/Badge'
 import { ProgressBar } from './components/ProgressBar'
 import { TaskCard } from './components/TaskCard'
 import { TaskModal } from './components/TaskModal'
-import { dataBackend, listLoginContests, listLoginProfiles, signInProfile, signOutProfile, type LoginContest, type LoginProfile } from './lib/supabaseApi'
+import { dataBackend, initializeMemberPassword, listLoginContests, listLoginProfiles, signInProfile, signOutProfile, type LoginContest, type LoginProfile } from './lib/supabaseApi'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
 
 type View = 'dashboard' | 'tasks' | 'kanban' | 'timeline' | 'categories' | 'users' | 'history' | 'manager-tasks' | 'my-tasks' | 'progress' | 'messages' | 'settings' | 'account'
@@ -394,7 +394,9 @@ function RemoteLoginScreen({ onLogin }: { onLogin: (userId: string, contestId: s
   const [selectedContestId, setSelectedContestId] = useState('')
   const [search, setSearch] = useState('')
   const [selectedProfile, setSelectedProfile] = useState<LoginProfile | null>(null)
+  const [setupContact, setSetupContact] = useState('')
   const [password, setPassword] = useState('')
+  const [passwordConfirmation, setPasswordConfirmation] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [loadingContests, setLoadingContests] = useState(true)
@@ -428,7 +430,9 @@ function RemoteLoginScreen({ onLogin }: { onLogin: (userId: string, contestId: s
     let cancelled = false
     setLoadingProfiles(true)
     setSelectedProfile(null)
+    setSetupContact('')
     setPassword('')
+    setPasswordConfirmation('')
     setError('')
     listLoginProfiles(selectedContestId)
       .then(items => {
@@ -453,6 +457,19 @@ function RemoteLoginScreen({ onLogin }: { onLogin: (userId: string, contestId: s
     setBusy(true)
     setError('')
     try {
+      if (!selectedProfile.passwordInitialized) {
+        if (password !== passwordConfirmation) {
+          setError('Les deux mots de passe ne correspondent pas.')
+          return
+        }
+        await initializeMemberPassword(
+          selectedContestId,
+          selectedProfile.id,
+          setupContact,
+          password,
+        )
+        setSelectedProfile(current => current ? { ...current, passwordInitialized: true } : current)
+      }
       await signInProfile(selectedProfile.id, password)
       await onLogin(selectedProfile.id, selectedContestId)
     } catch (error) {
@@ -481,9 +498,16 @@ function RemoteLoginScreen({ onLogin }: { onLogin: (userId: string, contestId: s
         ? <>
           <label className="login-search"><Search size={17} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Rechercher mon nom…" /></label>
           <div className="profile-list">
-            {filteredProfiles.map(profile => <button key={profile.id} onClick={() => setSelectedProfile(profile)}>
+            {filteredProfiles.map(profile => <button key={profile.id} onClick={() => {
+              setSelectedProfile(profile)
+              setSetupContact('')
+              setPassword('')
+              setPasswordConfirmation('')
+              setError('')
+            }}>
               <span><strong>{profile.displayName}</strong><small>{roleLabels[profile.role]}</small></span>
               {profile.role === 'admin' && <em><ShieldCheck size={13} /> Admin</em>}
+              {!profile.passwordInitialized && <em>À initialiser</em>}
               <ChevronRight size={20} />
             </button>)}
           </div>
@@ -496,11 +520,15 @@ function RemoteLoginScreen({ onLogin }: { onLogin: (userId: string, contestId: s
       <form className="login-password-dialog" onSubmit={event => void authenticate(event)}>
         <button type="button" className="icon-btn password-close" onClick={() => setSelectedProfile(null)}><X size={19} /></button>
         <span className="password-icon"><LockKeyhole size={24} /></span>
-        <h2>Connexion</h2>
-        <p>Saisissez le mot de passe de {selectedProfile.displayName}.</p>
-        <label className="field"><span>Mot de passe</span><input autoFocus required minLength={8} type="password" autoComplete="current-password" value={password} onChange={event => { setPassword(event.target.value); setError('') }} /></label>
+        <h2>{selectedProfile.passwordInitialized ? 'Connexion' : 'Créer votre mot de passe'}</h2>
+        <p>{selectedProfile.passwordInitialized
+          ? `Saisissez le mot de passe de ${selectedProfile.displayName}.`
+          : `Vérifiez le contact renseigné lors de l’inscription, puis choisissez le mot de passe de ${selectedProfile.displayName}.`}</p>
+        {!selectedProfile.passwordInitialized && <label className="field"><span>E-mail ou téléphone</span><input autoFocus required value={setupContact} onChange={event => { setSetupContact(event.target.value); setError('') }} /></label>}
+        <label className="field"><span>Mot de passe</span><input autoFocus={selectedProfile.passwordInitialized} required minLength={8} type="password" autoComplete={selectedProfile.passwordInitialized ? 'current-password' : 'new-password'} value={password} onChange={event => { setPassword(event.target.value); setError('') }} /></label>
+        {!selectedProfile.passwordInitialized && <label className="field"><span>Confirmer le mot de passe</span><input required minLength={8} type="password" autoComplete="new-password" value={passwordConfirmation} onChange={event => { setPasswordConfirmation(event.target.value); setError('') }} /></label>}
         {error && <div className="password-error">{error}</div>}
-        <button className="primary-btn password-submit" disabled={busy}>{busy ? 'Connexion…' : 'Se connecter'}</button>
+        <button className="primary-btn password-submit" disabled={busy}>{busy ? 'Vérification…' : selectedProfile.passwordInitialized ? 'Se connecter' : 'Créer et se connecter'}</button>
       </form>
     </div>}
   </main>
@@ -899,7 +927,7 @@ function UsersView({ tasks }: { tasks: Task[] }) {
             }} title="Supprimer le profil"><Trash2 size={15} /></button>
           </div>
         </div>
-        <div><h2>{user.name}</h2><span>{roleLabels[user.role]}</span><p>{user.contact}</p><small className={dataBackend === 'supabase' ? 'password-ready' : user.passwordHash && user.passwordSalt ? 'password-ready' : 'password-missing'}>{dataBackend === 'supabase' ? 'Mot de passe géré par Supabase' : user.passwordHash && user.passwordSalt ? 'Mot de passe configuré' : 'Mot de passe à configurer'}</small></div>
+        <div><h2>{user.name}</h2><span>{roleLabels[user.role]}</span><p>{user.contact}</p><small className={dataBackend === 'supabase' ? user.passwordInitialized ? 'password-ready' : 'password-missing' : user.passwordHash && user.passwordSalt ? 'password-ready' : 'password-missing'}>{dataBackend === 'supabase' ? user.passwordInitialized ? 'Mot de passe configuré' : 'Mot de passe à initialiser' : user.passwordHash && user.passwordSalt ? 'Mot de passe configuré' : 'Mot de passe à configurer'}</small></div>
         {user.role === 'manager' && <div className="manager-category-assignment"><strong>Catégories responsables</strong><div>{categories.map(category => <button key={category.id} className={(user.managedCategoryIds ?? []).includes(category.id) ? 'selected' : ''} onClick={() => updateUser(user.id, { managedCategoryIds: (user.managedCategoryIds ?? []).includes(category.id) ? (user.managedCategoryIds ?? []).filter(id => id !== category.id) : [...(user.managedCategoryIds ?? []), category.id] })}>{category.icon} {category.name}</button>)}</div></div>}
         <div className="user-stats"><strong>{assigned.length}<small>tâches</small></strong><strong>{done}<small>terminées</small></strong></div><ProgressBar value={assigned.length ? Math.round(done / assigned.length * 100) : 0} compact />
       </article>

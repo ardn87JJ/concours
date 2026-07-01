@@ -393,6 +393,9 @@ verify_jwt = false
 [functions.delete-contest]
 verify_jwt = false
 
+[functions.initialize-member-password]
+verify_jwt = false
+
 [functions.manage-member]
 verify_jwt = false
 

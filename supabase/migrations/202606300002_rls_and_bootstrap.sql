@@ -122,14 +122,15 @@ returns table (
   display_name text,
   role public.user_role,
   initials text,
-  color text
+  color text,
+  password_initialized boolean
 )
 language sql
 stable
 security definer
 set search_path = ''
 as $$
-  select p.id, p.display_name, cm.role, p.initials, p.color
+  select p.id, p.display_name, cm.role, p.initials, p.color, p.password_initialized
   from public.contest_members cm
   join public.profiles p on p.id = cm.user_id
   where cm.contest_id = target_contest_id
@@ -176,13 +177,16 @@ begin
   )
   returning id into new_contest_id;
 
-  insert into public.profiles (id, display_name, contact, initials, color)
+  insert into public.profiles (
+    id, display_name, contact, initials, color, password_initialized
+  )
   values (
     new_user_id,
     trim(admin_name),
     coalesce(trim(admin_contact), ''),
     upper(trim(admin_initials)),
-    coalesce(nullif(admin_color, ''), '#345f50')
+    coalesce(nullif(admin_color, ''), '#345f50'),
+    true
   );
 
   insert into public.contest_members (contest_id, user_id, role)

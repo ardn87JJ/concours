@@ -16,6 +16,7 @@ interface ProfileRow {
   contact: string
   initials: string
   color: string
+  password_initialized: boolean
 }
 
 interface ContestMemberRow {
@@ -135,7 +136,7 @@ export async function loadSupabaseAppData(): Promise<AppData> {
     auditResult,
   ] = await Promise.all([
     client.from('contests').select('id, name, location, start_date, end_date, description').order('start_date', { ascending: true }),
-    client.from('profiles').select('id, display_name, contact, initials, color').order('display_name', { ascending: true }),
+    client.from('profiles').select('id, display_name, contact, initials, color, password_initialized').order('display_name', { ascending: true }),
     client.from('contest_members').select('contest_id, user_id, role'),
     client.from('categories').select('id, contest_id, name, color, icon').order('name', { ascending: true }),
     client.from('manager_categories').select('contest_id, category_id, user_id'),
@@ -191,6 +192,7 @@ export async function loadSupabaseAppData(): Promise<AppData> {
       contact: profile.contact,
       initials: profile.initials,
       color: profile.color,
+      passwordInitialized: profile.password_initialized,
       managedCategoryIds: managedCategoryIds.length ? managedCategoryIds : undefined,
     }]
   })

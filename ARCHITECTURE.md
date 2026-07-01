@@ -160,6 +160,9 @@ membres authentifiés.
   compte, réinitialiser son mot de passe ou retirer un membre du concours ;
 - les identifiants Auth utilisent une adresse technique dérivée de l'UUID,
   invisible dans l'interface ;
+- les profils importés sont marqués comme non initialisés ; leur première
+  connexion exige la correspondance du contact enregistré avant de définir
+  leur mot de passe ;
 - les clés secrètes restent exclusivement dans l'environnement Supabase.
 
 ### Transition frontend

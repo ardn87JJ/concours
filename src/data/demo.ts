@@ -72,6 +72,7 @@ export const demoData: AppData = {
     startDate: '2026-09-12',
     endDate: '2026-09-13',
     description: 'Concours national d’attelage — dressage, marathon et maniabilité.',
+    color: '#1f5746',
   }],
   categories,
   users,

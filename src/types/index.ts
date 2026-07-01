@@ -9,6 +9,7 @@ export interface Contest {
   startDate: string
   endDate: string
   description: string
+  color: string
 }
 
 export interface Category {
@@ -69,7 +70,7 @@ export interface AuditEvent {
   contestId: string
   actorId: string
   action: 'create' | 'update' | 'delete' | 'comment' | 'assign' | 'status' | 'message' | 'import'
-  entityType: 'task' | 'user' | 'message' | 'category'
+  entityType: 'task' | 'user' | 'message' | 'category' | 'contest'
   entityId: string
   description: string
   createdAt: string

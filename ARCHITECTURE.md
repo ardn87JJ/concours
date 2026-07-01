@@ -250,6 +250,11 @@ Les composants de `src/components/` extraient uniquement les éléments les plus
 réutilisés. Les styles utilisent des classes globales, des variables CSS et
 trois paliers responsive (`1100px`, `780px`, `420px`).
 
+Le concours actif fournit une couleur hexadécimale. `App.tsx` en dérive une
+palette CSS (`--contest-primary`, `--contest-dark`, `--contest-light` et
+`--contest-soft`) appliquée au shell. Les couleurs trop claires sont assombries
+pour préserver le contraste des boutons, en-têtes et navigations.
+
 ## Build et déploiement
 
 `npm run build` enchaîne :

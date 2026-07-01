@@ -8,6 +8,10 @@ applicative `0.1.0`.
 
 ### Ajouté
 
+- couleur hexadécimale propre à chaque concours, persistée dans Supabase et
+  transformée en nuances pour personnaliser les principales interfaces ;
+- formulaire administrateur de modification du nom, lieu, dates, description
+  et couleur d’un concours existant.
 - navigation bénévole simplifiée à deux onglets (« Mes tâches » et
   « Messagerie »), déplacée en haut de l’écran avec un fond vert sombre ;
 - ouverture par défaut de la messagerie bénévole sur la liste des conversations,
@@ -64,6 +68,9 @@ applicative `0.1.0`.
 
 ### Corrigé
 
+- le changement de concours conserve désormais le profil connecté lorsqu’il
+  appartient au concours cible, au lieu de sélectionner arbitrairement le
+  premier membre et de perdre les droits d’administration.
 - les choix de statut de la vue bénévole sont désormais enregistrés par un
   bouton unique « Mettre à jour la tâche » ; les anciennes actions rapides
   redondantes « Je suis bloqué » et « C’est terminé » sont supprimées.

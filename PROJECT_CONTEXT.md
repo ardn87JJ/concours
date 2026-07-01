@@ -50,6 +50,8 @@ Le bénévole consulte ses tâches dans une interface simplifiée, met leur stat
   tâche reste due jusqu'à la fin de sa journée d'échéance ;
 - ajout manuel d'une tâche à un calendrier externe par export iCalendar
   `.ics`, sans transmission à un service tiers ;
+- chaque concours possède une couleur hexadécimale `#RRGGBB` servant de base
+  à une palette d’interface calculée avec des nuances sombres et claires ;
 - mots de passe des profils dérivés par PBKDF2-SHA-256, 210 000
   itérations, sel aléatoire de 16 octets et version de format `2` ;
 - aucun mot de passe ni dérivé exporté dans les sauvegardes JSON ;
@@ -89,6 +91,8 @@ Le bénévole consulte ses tâches dans une interface simplifiée, met leur stat
 - priorités : `low`, `normal`, `high`, `urgent` ;
 - rôles : `admin`, `manager`, `volunteer` ;
 - un administrateur peut gérer toutes les entités du concours actif ;
+- un administrateur peut modifier les informations et la couleur d’un concours
+  auquel il appartient ;
 - un responsable ne peut modifier que les tâches de ses catégories ;
 - un bénévole assigné ne peut modifier que le statut d'une tâche ;
 - une catégorie supprimée réaffecte ses tâches à la première catégorie restante ;

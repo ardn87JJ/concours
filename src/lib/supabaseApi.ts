@@ -45,6 +45,16 @@ export interface CreateContestInput {
   contestStartDate: string
   contestEndDate: string
   contestDescription?: string
+  contestColor: string
+}
+
+export interface UpdateContestInput {
+  name: string
+  location: string
+  startDate: string
+  endDate: string
+  description: string
+  color: string
 }
 
 interface LoginContestRow {
@@ -185,6 +195,21 @@ export async function createContest(input: CreateContestInput) {
   })
   await throwFunctionError(data, error)
   return data as { contestId: string }
+}
+
+export async function updateContest(contestId: string, input: UpdateContestInput) {
+  const { error } = await requireClient()
+    .from('contests')
+    .update({
+      name: input.name.trim(),
+      location: input.location.trim(),
+      start_date: input.startDate,
+      end_date: input.endDate,
+      description: input.description.trim(),
+      color: input.color,
+    })
+    .eq('id', contestId)
+  if (error) throw error
 }
 
 export async function deleteContest(contestId: string) {

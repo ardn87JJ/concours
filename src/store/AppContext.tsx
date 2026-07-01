@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { demoData } from '../data/demo'
-import { changeOwnSupabasePassword, createContest, createMember, dataBackend, deleteContest as deleteContestRemote, removeMember, resetMemberPassword } from '../lib/supabaseApi'
+import { changeOwnSupabasePassword, createContest, createMember, dataBackend, deleteContest as deleteContestRemote, removeMember, resetMemberPassword, updateContest as updateContestRemote } from '../lib/supabaseApi'
 import { createPasswordCredential } from '../lib/password'
 import { PASSWORD_VERSION } from '../lib/password'
 import { supabase } from '../lib/supabase'
@@ -32,6 +32,7 @@ interface AppContextValue extends AppData {
   setUserPassword: (userId: string, password: string) => Promise<void>
   changeOwnPassword: (userId: string, password: string) => Promise<void>
   addContest: (contest: Omit<Contest, 'id'>) => Promise<string>
+  updateContest: (id: string, updates: Omit<Contest, 'id'>) => Promise<void>
   deleteContest: (id: string) => Promise<void>
   setActiveContestId: (id: string) => void
   setCurrentUserId: (id: string) => void
@@ -94,6 +95,7 @@ const loadData = (): AppData => {
     const parsed = JSON.parse(stored) as AppData
     const migrated = {
       ...parsed,
+      contests: parsed.contests.map(contest => ({ ...contest, color: contest.color ?? '#1f5746' })),
       messages: (parsed.messages ?? []).map(message => ({ ...message, readByIds: message.readByIds ?? [message.senderId] })),
       notifications: parsed.notifications ?? [],
       auditLog: parsed.auditLog ?? [],
@@ -1069,6 +1071,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           contestStartDate: contest.startDate,
           contestEndDate: contest.endDate,
           contestDescription: contest.description,
+          contestColor: contest.color,
         })
         await reloadSupabaseSnapshot()
         setData(current => ({
@@ -1083,6 +1086,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
         activeContestId: id,
       }))
       return id
+    },
+    updateContest: async (id: string, updates: Omit<Contest, 'id'>) => {
+      const currentUser = data.users.find(user =>
+        user.id === data.currentUserId && user.contestId === id && user.role === 'admin')
+      if (!currentUser) return
+      if (dataBackend === 'supabase') {
+        await updateContestRemote(id, updates)
+        await reloadSupabaseSnapshot()
+        return
+      }
+      setData(current => ({
+        ...current,
+        contests: current.contests.map(contest => contest.id === id ? { ...updates, id } : contest),
+        auditLog: [...current.auditLog, audit(id, currentUser.id, {
+          action: 'update',
+          entityType: 'contest',
+          entityId: id,
+          description: `a modifié le concours « ${updates.name} »`,
+        })],
+      }))
     },
     deleteContest: async (id: string) => {
       const currentUser = getContestUsers(data).find(user => user.id === data.currentUserId)
@@ -1114,8 +1137,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setData(current => {
         if (!current.contests.some(contest => contest.id === id)) return current
         const nextUsers = current.users.filter(user => user.contestId === id)
+        const currentMembership = nextUsers.find(user => user.id === current.currentUserId)
         return nextUsers.length
-          ? { ...current, activeContestId: id, currentUserId: nextUsers[0].id }
+          ? { ...current, activeContestId: id, currentUserId: currentMembership?.id ?? nextUsers[0].id }
           : { ...current, activeContestId: id }
       }),
     setCurrentUserId: (id: string) => setData(current => ({ ...current, currentUserId: id })),

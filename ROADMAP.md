@@ -39,6 +39,8 @@ doivent être validées avant toute évolution fonctionnelle.
 - [x] heure d'échéance facultative pour les tâches ;
 - [x] ajout d'une tâche à un calendrier externe par fichier iCalendar ;
 - [x] gestion initiale de plusieurs concours ;
+- [x] modification des informations d’un concours et personnalisation de
+  l’interface par une couleur propre au concours ;
 - [x] export CSV et sauvegarde JSON.
 
 ### Collaboration et rôles

@@ -8,6 +8,7 @@ interface ContestRow {
   start_date: string
   end_date: string
   description: string
+  color: string
 }
 
 interface ProfileRow {
@@ -135,7 +136,7 @@ export async function loadSupabaseAppData(): Promise<AppData> {
     notificationsResult,
     auditResult,
   ] = await Promise.all([
-    client.from('contests').select('id, name, location, start_date, end_date, description').order('start_date', { ascending: true }),
+    client.from('contests').select('id, name, location, start_date, end_date, description, color').order('start_date', { ascending: true }),
     client.from('profiles').select('id, display_name, contact, initials, color, password_initialized').order('display_name', { ascending: true }),
     client.from('contest_members').select('contest_id, user_id, role'),
     client.from('categories').select('id, contest_id, name, color, icon').order('name', { ascending: true }),
@@ -209,6 +210,7 @@ export async function loadSupabaseAppData(): Promise<AppData> {
       startDate: contest.start_date,
       endDate: contest.end_date,
       description: contest.description,
+      color: contest.color,
     })),
     categories: categories.map(category => ({
       id: category.id,

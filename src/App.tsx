@@ -39,6 +39,33 @@ const navPersonal = [
   { id: 'messages', label: 'Messagerie', icon: MessageCircle },
 ] as const
 
+const DEFAULT_CONTEST_COLOR = '#1f5746'
+
+const mixHexColor = (source: string, target: string, weight: number) => {
+  const parse = (value: string) => [1, 3, 5].map(index => Number.parseInt(value.slice(index, index + 2), 16))
+  const sourceRgb = parse(source)
+  const targetRgb = parse(target)
+  return `#${sourceRgb.map((channel, index) =>
+    Math.round(channel + (targetRgb[index] - channel) * weight).toString(16).padStart(2, '0')).join('')}`
+}
+
+const createContestTheme = (value?: string) => {
+  const color = /^#[0-9a-f]{6}$/i.test(value ?? '') ? value!.toLowerCase() : DEFAULT_CONTEST_COLOR
+  const [red, green, blue] = [1, 3, 5].map(index => Number.parseInt(color.slice(index, index + 2), 16))
+  const luminance = (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255
+  const primary = luminance > .62 ? mixHexColor(color, '#000000', .38) : luminance < .12 ? mixHexColor(color, '#ffffff', .1) : color
+  return {
+    '--contest-color': color,
+    '--contest-primary': primary,
+    '--contest-dark': mixHexColor(primary, '#000000', .32),
+    '--contest-light': mixHexColor(color, '#ffffff', .82),
+    '--contest-soft': mixHexColor(color, '#ffffff', .92),
+    '--green': primary,
+    '--green-dark': mixHexColor(primary, '#000000', .32),
+    '--green-light': mixHexColor(color, '#ffffff', .86),
+  } as CSSProperties
+}
+
 export default function App() {
   const app = useApp()
   const isRemote = dataBackend === 'supabase' && isSupabaseConfigured && Boolean(supabase)
@@ -81,6 +108,7 @@ export default function App() {
   }, [app.currentUserId, app.users, isRemote, view])
 
   const contest = app.contests.find(item => item.id === app.activeContestId)!
+  const contestTheme = createContestTheme(contest.color)
   const contestUsers = app.users.filter(user => user.contestId === contest.id)
   const currentUser = contestUsers.find(user => user.id === app.currentUserId) ?? contestUsers[0] ?? app.users.find(user => user.id === app.currentUserId)!
   const authenticatedUser = app.users.find(user => user.id === authenticatedUserIdEffective)
@@ -203,7 +231,7 @@ export default function App() {
   }
 
   return (
-    <div className={`app-shell ${!isAdmin ? 'user-mode' : ''} ${currentUser.role === 'volunteer' ? 'volunteer-mode' : ''}`}>
+    <div className={`app-shell ${!isAdmin ? 'user-mode' : ''} ${currentUser.role === 'volunteer' ? 'volunteer-mode' : ''}`} style={contestTheme}>
       <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="brand"><div className="brand-mark">A</div><div><strong>Attelage</strong><span>{isAdmin ? 'PILOT' : 'MON ESPACE'}</span></div><button className="close-sidebar" onClick={() => setSidebarOpen(false)}><X /></button></div>
         <div className="contest-switcher">
@@ -1377,20 +1405,51 @@ function AccountView() {
 }
 
 function SettingsView() {
-  const { contests, tasks, users, categories, auditLog, messages, activeContestId, addContest, deleteContest, setActiveContestId, resetDemo } = useApp()
+  const { contests, tasks, users, categories, auditLog, messages, activeContestId, addContest, updateContest, deleteContest, setActiveContestId, resetDemo } = useApp()
   const contest = contests.find(item => item.id === activeContestId)!
   const [creating, setCreating] = useState(false)
+  const [editingContestId, setEditingContestId] = useState<string | null>(null)
   const [name, setName] = useState('')
   const [location, setLocation] = useState('')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [description, setDescription] = useState('')
+  const [color, setColor] = useState(DEFAULT_CONTEST_COLOR)
+
+  const closeForm = () => {
+    setCreating(false)
+    setEditingContestId(null)
+    setName('')
+    setLocation('')
+    setStartDate('')
+    setEndDate('')
+    setDescription('')
+    setColor(DEFAULT_CONTEST_COLOR)
+  }
+
+  const startCreating = () => {
+    closeForm()
+    setCreating(true)
+  }
+
+  const startEditing = (item: Contest) => {
+    setActiveContestId(item.id)
+    setEditingContestId(item.id)
+    setName(item.name)
+    setLocation(item.location)
+    setStartDate(item.startDate)
+    setEndDate(item.endDate)
+    setDescription(item.description)
+    setColor(item.color ?? DEFAULT_CONTEST_COLOR)
+    setCreating(true)
+  }
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
-    await addContest({ name, location, startDate, endDate, description })
-    setName(''); setLocation(''); setStartDate(''); setEndDate(''); setDescription('')
-    setCreating(false)
+    const values = { name, location, startDate, endDate, description, color: color.toLowerCase() }
+    if (editingContestId) await updateContest(editingContestId, values)
+    else await addContest(values)
+    closeForm()
   }
 
   const remove = async (id: string, contestName: string) => {
@@ -1446,36 +1505,39 @@ function SettingsView() {
   return <div className="contest-settings">
     <section className="panel settings-card contest-manager">
       <div className="settings-title">
-        <div><h2>Gestion des concours</h2><p>Créez un concours ou choisissez celui sur lequel travailler.</p></div>
-        <button className="primary-btn" onClick={() => setCreating(true)}><Plus size={17} /> Nouveau concours</button>
+        <div><h2>Gestion des concours</h2><p>Créez, modifiez ou choisissez le concours sur lequel travailler.</p></div>
+        <button className="primary-btn" onClick={startCreating}><Plus size={17} /> Nouveau concours</button>
       </div>
     {creating && <form className="contest-form" onSubmit={event => void submit(event)}>
+        <header><div><strong>{editingContestId ? 'Modifier le concours' : 'Nouveau concours'}</strong><small>La couleur personnalise automatiquement l’interface et ses nuances.</small></div></header>
         <div className="form-grid">
           <label className="field"><span>Nom du concours</span><input autoFocus required value={name} onChange={e => setName(e.target.value)} placeholder="Concours d’attelage…" /></label>
           <label className="field"><span>Lieu</span><input required value={location} onChange={e => setLocation(e.target.value)} placeholder="Ville ou domaine" /></label>
           <label className="field"><span>Date de début</span><input required type="date" value={startDate} onChange={e => { setStartDate(e.target.value); if (!endDate || endDate < e.target.value) setEndDate(e.target.value) }} /></label>
           <label className="field"><span>Date de fin</span><input required type="date" min={startDate} value={endDate} onChange={e => setEndDate(e.target.value)} /></label>
         </div>
+        <label className="field contest-color-field"><span>Couleur du concours</span><div><input type="color" value={color} onChange={e => setColor(e.target.value)} aria-label="Sélectionner la couleur" /><input required pattern="^#[0-9A-Fa-f]{6}$" maxLength={7} value={color} onChange={e => setColor(e.target.value)} placeholder="#1f5746" /><i style={{ background: color }} /></div><small>Format hexadécimal, par exemple #1f5746.</small></label>
         <label className="field"><span>Description</span><textarea rows={3} value={description} onChange={e => setDescription(e.target.value)} placeholder="Informations générales sur le concours…" /></label>
-        <div className="contest-form-actions"><button type="button" className="secondary-btn" onClick={() => setCreating(false)}>Annuler</button><button className="primary-btn">Créer et ouvrir</button></div>
+        <div className="contest-form-actions"><button type="button" className="secondary-btn" onClick={closeForm}>Annuler</button><button className="primary-btn">{editingContestId ? 'Enregistrer les modifications' : 'Créer et ouvrir'}</button></div>
       </form>}
       <div className="contest-list">
         {contests.map(item => {
           const taskCount = tasks.filter(task => task.contestId === item.id).length
           const isActive = item.id === activeContestId
-          return <article key={item.id} className={isActive ? 'active' : ''}>
+          return <article key={item.id} className={isActive ? 'active' : ''} style={{ '--item-color': item.color ?? DEFAULT_CONTEST_COLOR } as CSSProperties}>
             <button className="contest-select" onClick={() => setActiveContestId(item.id)}>
               <span className="contest-list-icon"><Trophy size={20} /></span>
               <span><strong>{item.name}</strong><small>{item.location} · {formatDate(item.startDate)} — {taskCount} tâche{taskCount > 1 ? 's' : ''}</small></span>
               {isActive && <em>Actif</em>}
             </button>
+            <button className="contest-edit" title="Modifier ce concours" onClick={() => startEditing(item)}><Pencil size={17} /></button>
             <button className="contest-delete" disabled={contests.length === 1} title={contests.length === 1 ? 'Le dernier concours ne peut pas être supprimé' : 'Supprimer ce concours'} onClick={() => { void remove(item.id, item.name) }}><Trash2 size={17} /></button>
           </article>
         })}
       </div>
     </section>
     <div className="settings-grid">
-      <section className="panel settings-card"><h2>Concours actif</h2><dl><div><dt>Nom</dt><dd>{contest.name}</dd></div><div><dt>Lieu</dt><dd>{contest.location}</dd></div><div><dt>Dates</dt><dd>Du {formatDate(contest.startDate)} au {formatDate(contest.endDate)}</dd></div><div><dt>Description</dt><dd>{contest.description || 'Aucune description'}</dd></div></dl></section>
+      <section className="panel settings-card"><h2>Concours actif</h2><dl><div><dt>Nom</dt><dd>{contest.name}</dd></div><div><dt>Lieu</dt><dd>{contest.location}</dd></div><div><dt>Dates</dt><dd>Du {formatDate(contest.startDate)} au {formatDate(contest.endDate)}</dd></div><div><dt>Couleur</dt><dd className="contest-color-value"><i style={{ background: contest.color }} />{contest.color}</dd></div><div><dt>Description</dt><dd>{contest.description || 'Aucune description'}</dd></div></dl></section>
       <section className="panel settings-card"><h2>Exporter les données</h2><p>Téléchargez les tâches dans un fichier CSV ou une sauvegarde complète du concours. Les mots de passe ne sont jamais inclus.</p><div className="export-actions"><button className="secondary-btn" onClick={exportTasksCsv}><FileSpreadsheet size={17} /> Tâches en CSV</button><button className="secondary-btn" onClick={exportBackup}><Download size={17} /> Sauvegarde JSON</button></div></section>
       <section className="panel settings-card"><h2>Données de démonstration</h2><p>Les modifications sont conservées uniquement dans ce navigateur. Réinitialisez pour retrouver le jeu de données initial.</p><button className="secondary-btn" onClick={() => window.confirm('Réinitialiser toutes les données locales ?') && resetDemo()}><RotateCcw size={17} /> Réinitialiser les données</button><div className="local-notice"><ShieldCheck size={20} /><span><strong>Stockage local</strong> Aucun envoi vers un serveur.</span></div></section>
     </div>

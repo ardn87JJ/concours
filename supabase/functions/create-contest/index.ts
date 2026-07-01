@@ -7,6 +7,7 @@ interface CreateContestPayload {
   contestStartDate: string
   contestEndDate: string
   contestDescription?: string
+  contestColor: string
 }
 
 const initialCategories = [
@@ -37,6 +38,9 @@ Deno.serve(async request => {
     if (payload.contestEndDate < payload.contestStartDate) {
       return jsonResponse({ error: 'La date de fin doit suivre la date de début.' }, 400)
     }
+    if (!/^#[0-9A-Fa-f]{6}$/.test(payload.contestColor ?? '')) {
+      return jsonResponse({ error: 'La couleur doit utiliser le format hexadécimal #RRGGBB.' }, 400)
+    }
 
     const url = Deno.env.get('SUPABASE_URL')
     if (!url) throw new Error('SUPABASE_URL est absente.')
@@ -63,6 +67,7 @@ Deno.serve(async request => {
         start_date: payload.contestStartDate,
         end_date: payload.contestEndDate,
         description: payload.contestDescription?.trim() ?? '',
+        color: payload.contestColor.toLowerCase(),
       })
       .select('id')
       .single()

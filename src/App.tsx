@@ -168,7 +168,7 @@ export default function App() {
     account: ['Mon profil', 'Gérez la sécurité de votre compte.'],
   }
 
-  if (!authenticatedUserId || !authenticatedUser) {
+  if (!authenticatedUserIdEffective || !authenticatedUser) {
     return <LoginScreen
       contests={app.contests}
       users={app.users}

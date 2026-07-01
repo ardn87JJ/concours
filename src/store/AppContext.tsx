@@ -923,18 +923,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (dataBackend === 'supabase') {
           void (async () => {
             if (!supabase) return
+            const { data: { user }, error: userError } = await supabase.auth.getUser()
+            if (userError || !user) return
+            const viewerUserId = user.id
             const messages = current.messages.filter(message => {
               return participantId
-                ? (message.senderId === participantId && message.recipientId === current.currentUserId) ||
-                  (message.senderId === current.currentUserId && message.recipientId === participantId)
+                ? (message.senderId === participantId && message.recipientId === viewerUserId) ||
+                  (message.senderId === viewerUserId && message.recipientId === participantId)
                 : !message.recipientId
             })
             if (!messages.length) return
             const rows = messages
-              .filter(message => !message.readByIds.includes(current.currentUserId))
+              .filter(message => !message.readByIds.includes(viewerUserId))
               .map(message => ({
                 message_id: message.id,
-                user_id: current.currentUserId,
+                user_id: viewerUserId,
                 contest_id: current.activeContestId,
                 read_at: new Date().toISOString(),
               }))

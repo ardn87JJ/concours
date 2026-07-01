@@ -234,7 +234,7 @@ export default function App() {
           {notificationsOpen && <NotificationCenter onClose={() => setNotificationsOpen(false)} onOpenTask={task => { setSelectedTask(task); setNotificationsOpen(false) }} onOpenMessage={messageId => {
             const message = app.messages.find(item => item.id === messageId)
             const target = message?.recipientId
-              ? message.senderId === currentUser.id ? message.recipientId : message.senderId
+              ? message.senderId === authenticatedUser.id ? message.recipientId : message.senderId
               : 'general'
             setMessageConversation(target ?? 'general')
             setMessageNavigationKey(current => current + 1)
@@ -258,7 +258,7 @@ export default function App() {
           {view === 'manager-tasks' && currentUser.role === 'manager' && <ManagerTasksView tasks={contestTasks} onOpen={setSelectedTask} />}
           {view === 'my-tasks' && <MyTasks tasks={contestTasks.filter(task => task.assigneeIds.includes(currentUser.id))} onOpen={setSelectedTask} />}
           {view === 'progress' && <UserProgressView tasks={contestTasks} />}
-          {view === 'messages' && <MessagingView key={messageNavigationKey} initialConversation={messageConversation} />}
+          {view === 'messages' && <MessagingView key={messageNavigationKey} initialConversation={messageConversation} viewerUserId={authenticatedUser.id} />}
           {isAdmin && view === 'settings' && <SettingsView />}
           {view === 'account' && <AccountView />}
         </div>
@@ -1099,18 +1099,18 @@ function UserProgressView({ tasks }: { tasks: Task[] }) {
   </div>
 }
 
-function MessagingView({ initialConversation = 'general' }: { initialConversation?: string }) {
-  const { users, messages, activeContestId, currentUserId, sendMessage, markConversationRead } = useApp()
+function MessagingView({ initialConversation = 'general', viewerUserId }: { initialConversation?: string; viewerUserId: string }) {
+  const { users, messages, activeContestId, sendMessage, markConversationRead } = useApp()
   const [conversation, setConversation] = useState<'general' | string>(initialConversation)
   const [mobileChatOpen, setMobileChatOpen] = useState(true)
   const [search, setSearch] = useState('')
   const [text, setText] = useState('')
   const [sendError, setSendError] = useState('')
   const [sending, setSending] = useState(false)
-  const currentUser = users.find(user => user.id === currentUserId)!
+  const currentUser = users.find(user => user.id === viewerUserId)!
   const isAdmin = currentUser.role === 'admin'
   const contacts = users.filter(user =>
-    user.id !== currentUserId && user.name.toLocaleLowerCase('fr').includes(search.toLocaleLowerCase('fr')))
+    user.id !== viewerUserId && user.name.toLocaleLowerCase('fr').includes(search.toLocaleLowerCase('fr')))
   const contestMessages = messages.filter(message => message.contestId === activeContestId)
   const directPairs = [...new Set(contestMessages
     .filter(message => message.recipientId)
@@ -1123,14 +1123,14 @@ function MessagingView({ initialConversation = 'general' }: { initialConversatio
       return Boolean(message.recipientId) &&
         selectedPair.includes(message.senderId) && selectedPair.includes(message.recipientId!)
     }
-    return (message.senderId === currentUserId && message.recipientId === conversation) ||
-      (message.senderId === conversation && message.recipientId === currentUserId)
+    return (message.senderId === viewerUserId && message.recipientId === conversation) ||
+      (message.senderId === conversation && message.recipientId === viewerUserId)
   })
   const selectedUser = users.find(user => user.id === conversation)
   const pairUsers = selectedPair.map(id => users.find(user => user.id === id)).filter(Boolean)
   const canSendMessage = conversation === 'general' || Boolean(selectedUser)
   const isSupervision = !canSendMessage
-  const generalUnread = contestMessages.filter(message => !message.recipientId && !message.readByIds.includes(currentUserId)).length
+  const generalUnread = contestMessages.filter(message => !message.recipientId && !message.readByIds.includes(viewerUserId)).length
 
   useEffect(() => {
     setConversation(initialConversation)
@@ -1164,8 +1164,8 @@ function MessagingView({ initialConversation = 'general' }: { initialConversatio
 
   const lastDirectMessage = (userId: string) =>
     [...contestMessages].reverse().find(message =>
-      (message.senderId === currentUserId && message.recipientId === userId) ||
-      (message.senderId === userId && message.recipientId === currentUserId))
+      (message.senderId === viewerUserId && message.recipientId === userId) ||
+      (message.senderId === userId && message.recipientId === viewerUserId))
 
   return <section className={`messaging-panel panel ${!isAdmin ? 'simple-messaging' : ''} ${mobileChatOpen ? 'mobile-chat-open' : ''}`}>
     <aside className="conversation-list">
@@ -1183,7 +1183,7 @@ function MessagingView({ initialConversation = 'general' }: { initialConversatio
         <div className="conversation-label">MESSAGES DIRECTS</div>
         {contacts.map(user => {
           const last = lastDirectMessage(user.id)
-          const unread = contestMessages.filter(message => message.senderId === user.id && message.recipientId === currentUserId && !message.readByIds.includes(currentUserId)).length
+          const unread = contestMessages.filter(message => message.senderId === user.id && message.recipientId === viewerUserId && !message.readByIds.includes(viewerUserId)).length
           return <button key={user.id} className={conversation === user.id ? 'active' : ''} onClick={() => openConversation(user.id)}>
             <span className="online-avatar"><Avatar user={user} /><i /></span>
             <span><strong>{user.name}</strong><small>{last?.text ?? roleLabels[user.role]}</small></span>
@@ -1223,7 +1223,7 @@ function MessagingView({ initialConversation = 'general' }: { initialConversatio
         {visibleMessages.map((message, index) => {
           const sender = users.find(user => user.id === message.senderId)
           const recipient = users.find(user => user.id === message.recipientId)
-          const mine = message.senderId === currentUserId
+          const mine = message.senderId === viewerUserId
           const previous = visibleMessages[index - 1]
           const showAuthor = !previous || previous.senderId !== message.senderId ||
             new Date(message.createdAt).getTime() - new Date(previous.createdAt).getTime() > 300_000

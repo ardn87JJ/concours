@@ -88,6 +88,9 @@ applicative `0.1.0`.
 - la ligne Grid implicite de la messagerie est contrainte à la hauteur du
   panneau, empêchant une longue liste de membres de repousser le compositeur
   plusieurs écrans plus bas sur ordinateur.
+- les messages directs, leurs aperçus et leur état « Vous » utilisent désormais
+  exclusivement l’identité réellement authentifiée ; les échanges entre
+  autres membres restent cantonnés à la supervision administrateur.
 
 ### Vérifié
 

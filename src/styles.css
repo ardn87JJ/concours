@@ -74,6 +74,7 @@ h1, h2, h3, p { margin-top: 0; }
 .primary-btn, .secondary-btn, .danger-btn { min-height: 38px; padding: 0 15px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border-radius: 8px; font-size: 12px; font-weight: 700; }
 .primary-btn { color: white; background: var(--green); border: 1px solid var(--green); box-shadow: 0 3px 9px rgba(31,87,70,.15); }
 .primary-btn:hover { background: #194939; }
+.primary-btn:disabled { cursor: wait; opacity: .6; }
 .secondary-btn { color: #34483f; background: white; border: 1px solid #ccd5d0; }
 .danger-btn { color: white; background: #b74646; border: 0; }
 .content { width: min(1440px, 100%); padding: 30px 34px 55px; margin: 0 auto; }

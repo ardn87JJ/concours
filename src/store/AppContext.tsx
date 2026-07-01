@@ -17,7 +17,11 @@ interface AppContextValue extends AppData {
   updateCategory: (id: string, updates: Partial<Category>) => void
   deleteCategory: (id: string) => void
   addUser: (user: Omit<User, 'id' | 'contestId'>) => Promise<string>
-  addUsers: (users: Array<Omit<User, 'id' | 'contestId'>>) => void
+  addUsers: (users: Array<Omit<User, 'id' | 'contestId'>>) => Promise<{
+    imported: number
+    errors: string[]
+    failedContacts: string[]
+  }>
   updateUser: (id: string, updates: Partial<User>) => void
   deleteUser: (id: string) => void
   sendMessage: (message: Pick<Message, 'recipientId' | 'text'>) => void
@@ -729,9 +733,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       })
       return id
     },
-    addUsers: (users: Array<Omit<User, 'id' | 'contestId'>>) => {
+    addUsers: async (users: Array<Omit<User, 'id' | 'contestId'>>) => {
       if (dataBackend === 'supabase') {
-        void Promise.all(users.map(user => createMember({
+        const results = await Promise.allSettled(users.map(user => createMember({
           contestId: data.activeContestId,
           name: user.name,
           contact: user.contact,
@@ -739,17 +743,47 @@ export function AppProvider({ children }: { children: ReactNode }) {
           color: user.color,
           managedCategoryIds: user.managedCategoryIds ?? [],
           password: crypto.randomUUID(),
-        }))).then(() => loadSupabaseAppData().then(snapshot => {
-          setData(current => ({
-            ...snapshot,
-            activeContestId: current.activeContestId,
-            currentUserId: current.currentUserId,
-          }))
-        }))
-        return
+        })))
+        const failures = results.flatMap((result, index) => {
+          if (result.status === 'fulfilled') return []
+          const detail = result.reason instanceof Error
+            ? result.reason.message
+            : 'Erreur Supabase inconnue.'
+          return [{
+            contact: users[index].contact,
+            message: `${users[index].name} : ${detail}`,
+          }]
+        })
+        const imported = results.length - failures.length
+        const errors = failures.map(failure => failure.message)
+
+        if (imported > 0) {
+          try {
+            await reloadSupabaseSnapshot()
+          } catch (error) {
+            errors.push(error instanceof Error
+              ? `Actualisation de l’équipe impossible : ${error.message}`
+              : 'Actualisation de l’équipe impossible.')
+          }
+        }
+
+        return {
+          imported,
+          errors,
+          failedContacts: failures.map(failure => failure.contact),
+        }
       }
+
+      const actor = getContestUsers(data).find(user => user.id === data.currentUserId)
+      if (actor?.role !== 'admin') {
+        return {
+          imported: 0,
+          errors: ['Droits administrateur requis pour importer des membres.'],
+          failedContacts: users.map(user => user.contact),
+        }
+      }
+
       setData(current => {
-        if (getContestUsers(current).find(user => user.id === current.currentUserId)?.role !== 'admin') return current
         const additions = users.map(user => ({ ...user, id: crypto.randomUUID(), contestId: current.activeContestId }))
         return {
           ...current,
@@ -759,6 +793,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           })],
         }
       })
+      return { imported: users.length, errors: [], failedContacts: [] }
     },
     updateUser: (id: string, updates: Partial<User>) => {
       if (dataBackend === 'supabase') {

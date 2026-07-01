@@ -734,6 +734,7 @@ function UsersView({ tasks }: { tasks: Task[] }) {
   const [csvMembers, setCsvMembers] = useState<CsvMember[]>([])
   const [csvErrors, setCsvErrors] = useState<string[]>([])
   const [importMessage, setImportMessage] = useState('')
+  const [isImportingMembers, setIsImportingMembers] = useState(false)
   const [name, setName] = useState('')
   const [contact, setContact] = useState('')
   const [role, setRole] = useState<UserRole>('volunteer')
@@ -811,15 +812,30 @@ function UsersView({ tasks }: { tasks: Task[] }) {
     setCsvErrors([...result.errors, ...duplicates])
   }
 
-  const importMembers = () => {
+  const importMembers = async () => {
+    if (!csvMembers.length || isImportingMembers) return
     const colors = ['#476a9d', '#667b42', '#b35d71', '#93633d', '#33758a']
-    addUsers(csvMembers.map((member, index) => ({
-      ...member,
-      initials: member.name.split(/\s+/).map(word => word[0]).join('').slice(0, 2).toUpperCase(),
-      color: colors[index % colors.length],
-    })))
-    setImportMessage(`${csvMembers.length} membre${csvMembers.length > 1 ? 's' : ''} importé${csvMembers.length > 1 ? 's' : ''}.`)
-    setCsvMembers([])
+    setIsImportingMembers(true)
+    setImportMessage('')
+    try {
+      const result = await addUsers(csvMembers.map((member, index) => ({
+        ...member,
+        initials: member.name.split(/\s+/).map(word => word[0]).join('').slice(0, 2).toUpperCase(),
+        color: colors[index % colors.length],
+      })))
+      if (result.errors.length) {
+        setCsvErrors(current => [...current, ...result.errors])
+      }
+      if (result.imported > 0) {
+        setImportMessage(`${result.imported} membre${result.imported > 1 ? 's' : ''} réellement importé${result.imported > 1 ? 's' : ''}. Définissez ensuite leur mot de passe depuis leur profil.`)
+      }
+      const failedContacts = new Set(result.failedContacts)
+      setCsvMembers(current => current.filter(member => failedContacts.has(member.contact)))
+    } catch (error) {
+      setCsvErrors(current => [...current, error instanceof Error ? error.message : 'Import impossible.'])
+    } finally {
+      setIsImportingMembers(false)
+    }
   }
 
   const downloadTemplate = () => {
@@ -842,8 +858,8 @@ function UsersView({ tasks }: { tasks: Task[] }) {
         <button className="secondary-btn" onClick={downloadTemplate}><Download size={16} /> Télécharger le modèle</button>
       </div>
       <label className="csv-drop"><Upload size={25} /><strong>Choisir un fichier .csv</strong><span>Les doublons de contact seront ignorés.</span><input type="file" accept=".csv,text/csv" onChange={event => void readCsv(event.target.files?.[0])} /></label>
-      {csvErrors.length > 0 && <div className="csv-errors"><strong>{csvErrors.length} ligne{csvErrors.length > 1 ? 's' : ''} ignorée{csvErrors.length > 1 ? 's' : ''}</strong>{csvErrors.slice(0, 6).map(error => <span key={error}>{error}</span>)}</div>}
-      {csvMembers.length > 0 && <div className="csv-preview"><div><strong>{csvMembers.length} membre{csvMembers.length > 1 ? 's' : ''} prêt{csvMembers.length > 1 ? 's' : ''} à importer</strong><button className="primary-btn" onClick={importMembers}>Confirmer l’import</button></div>{csvMembers.slice(0, 5).map(member => <span key={`${member.name}-${member.contact}`}><b>{member.name}</b><em>{roleLabels[member.role]}</em><small>{member.contact}</small></span>)}</div>}
+      {csvErrors.length > 0 && <div className="csv-errors"><strong>{csvErrors.length} problème{csvErrors.length > 1 ? 's' : ''} détecté{csvErrors.length > 1 ? 's' : ''}</strong>{csvErrors.slice(0, 6).map(error => <span key={error}>{error}</span>)}</div>}
+      {csvMembers.length > 0 && <div className="csv-preview"><div><strong>{csvMembers.length} membre{csvMembers.length > 1 ? 's' : ''} prêt{csvMembers.length > 1 ? 's' : ''} à importer</strong><button className="primary-btn" disabled={isImportingMembers} onClick={() => { void importMembers() }}>{isImportingMembers ? 'Import en cours…' : 'Confirmer l’import'}</button></div>{csvMembers.slice(0, 5).map(member => <span key={`${member.name}-${member.contact}`}><b>{member.name}</b><em>{roleLabels[member.role]}</em><small>{member.contact}</small></span>)}</div>}
       {importMessage && <div className="import-success"><CheckCircle2 size={17} />{importMessage}</div>}
     </section>}
     {adding && <form className="inline-create user-create" onSubmit={event => void submit(event)}>

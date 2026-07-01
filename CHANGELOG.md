@@ -54,10 +54,17 @@ applicative `0.1.0`.
 - suppression de toute persistance navigateur en mode Supabase : plus de
   `sessionStorage` ni de session Auth conservée entre rechargements.
 
+### Corrigé
+
+- l'import CSV attend désormais la création effective des profils Supabase,
+  conserve les lignes échouées et affiche les erreurs au lieu de confirmer
+  prématurément l'opération.
+
 ### Vérifié
 
 - `npm run build` réussi le 30 juin 2026 ;
 - `npm run lint` réussi le 30 juin 2026.
+- `npm run build` et `npm run lint` réussis le 1er juillet 2026.
 
 ### Points connus
 

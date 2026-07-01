@@ -25,8 +25,8 @@ Deno.serve(async request => {
       !payload.contestStartDate || !payload.contestEndDate || !payload.adminName?.trim()) {
       return jsonResponse({ error: 'Les informations du concours et de l’administrateur sont obligatoires.' }, 400)
     }
-    if (!payload.adminPassword || payload.adminPassword.length < 8) {
-      return jsonResponse({ error: 'Le mot de passe doit contenir au moins 8 caractères.' }, 400)
+    if (!payload.adminPassword || payload.adminPassword.length < 6) {
+      return jsonResponse({ error: 'Le mot de passe doit contenir au moins 6 caractères.' }, 400)
     }
     if (payload.contestEndDate < payload.contestStartDate) {
       return jsonResponse({ error: 'La date de fin doit suivre la date de début.' }, 400)

@@ -133,11 +133,10 @@ export async function signInProfile(userId: string, password: string) {
 export async function initializeMemberPassword(
   contestId: string,
   userId: string,
-  contact: string,
   password: string,
 ) {
   const { data, error } = await requireClient().functions.invoke('initialize-member-password', {
-    body: { contestId, userId, contact, password },
+    body: { contestId, userId, password },
   })
   await throwFunctionError(data, error)
   return data as { userId: string }

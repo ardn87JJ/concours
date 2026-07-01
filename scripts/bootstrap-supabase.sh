@@ -27,11 +27,11 @@ read -r -p "Date de fin (AAAA-MM-JJ) : " contest_end_date
 read -r -p "Description (facultative) : " contest_description
 read -r -p "Nom de l’administrateur : " admin_name
 read -r -p "Contact administrateur (facultatif) : " admin_contact
-read -r -s -p "Mot de passe administrateur (8 caractères minimum) : " admin_password
+read -r -s -p "Mot de passe administrateur (6 caractères minimum) : " admin_password
 echo
 
-if (( ${#admin_password} < 8 )); then
-  echo "Le mot de passe doit contenir au moins 8 caractères." >&2
+if (( ${#admin_password} < 6 )); then
+  echo "Le mot de passe doit contenir au moins 6 caractères." >&2
   exit 1
 fi
 

@@ -379,8 +379,8 @@ function LoginScreen({
         <span className="password-icon"><LockKeyhole size={24} /></span>
         <h2>{hasPassword ? 'Connexion' : canInitializePassword ? 'Créer le mot de passe administrateur' : 'Mot de passe non configuré'}</h2>
         <p>{hasPassword ? `Saisissez le mot de passe de ${selectedUser.name}.` : canInitializePassword ? 'Première connexion du concours : définissez votre mot de passe.' : 'Un administrateur doit définir votre premier mot de passe.'}</p>
-        {(hasPassword || canInitializePassword) && <label className="field"><span>Mot de passe</span><input autoFocus required minLength={8} type="password" autoComplete={hasPassword ? 'current-password' : 'new-password'} value={password} onChange={event => { setPassword(event.target.value); setError('') }} /></label>}
-        {!hasPassword && canInitializePassword && <label className="field"><span>Confirmer le mot de passe</span><input required minLength={8} type="password" autoComplete="new-password" value={confirmation} onChange={event => { setConfirmation(event.target.value); setError('') }} /></label>}
+        {(hasPassword || canInitializePassword) && <label className="field"><span>Mot de passe</span><input autoFocus required minLength={6} type="password" autoComplete={hasPassword ? 'current-password' : 'new-password'} value={password} onChange={event => { setPassword(event.target.value); setError('') }} /></label>}
+        {!hasPassword && canInitializePassword && <label className="field"><span>Confirmer le mot de passe</span><input required minLength={6} type="password" autoComplete="new-password" value={confirmation} onChange={event => { setConfirmation(event.target.value); setError('') }} /></label>}
         {error && <div className="password-error">{error}</div>}
         {(hasPassword || canInitializePassword) && <button className="primary-btn password-submit" disabled={busy}>{busy ? 'Vérification…' : hasPassword ? 'Se connecter' : 'Créer et se connecter'}</button>}
       </form>
@@ -394,7 +394,6 @@ function RemoteLoginScreen({ onLogin }: { onLogin: (userId: string, contestId: s
   const [selectedContestId, setSelectedContestId] = useState('')
   const [search, setSearch] = useState('')
   const [selectedProfile, setSelectedProfile] = useState<LoginProfile | null>(null)
-  const [setupContact, setSetupContact] = useState('')
   const [password, setPassword] = useState('')
   const [passwordConfirmation, setPasswordConfirmation] = useState('')
   const [error, setError] = useState('')
@@ -430,7 +429,6 @@ function RemoteLoginScreen({ onLogin }: { onLogin: (userId: string, contestId: s
     let cancelled = false
     setLoadingProfiles(true)
     setSelectedProfile(null)
-    setSetupContact('')
     setPassword('')
     setPasswordConfirmation('')
     setError('')
@@ -465,7 +463,6 @@ function RemoteLoginScreen({ onLogin }: { onLogin: (userId: string, contestId: s
         await initializeMemberPassword(
           selectedContestId,
           selectedProfile.id,
-          setupContact,
           password,
         )
         setSelectedProfile(current => current ? { ...current, passwordInitialized: true } : current)
@@ -500,7 +497,6 @@ function RemoteLoginScreen({ onLogin }: { onLogin: (userId: string, contestId: s
           <div className="profile-list">
             {filteredProfiles.map(profile => <button key={profile.id} onClick={() => {
               setSelectedProfile(profile)
-              setSetupContact('')
               setPassword('')
               setPasswordConfirmation('')
               setError('')
@@ -523,10 +519,9 @@ function RemoteLoginScreen({ onLogin }: { onLogin: (userId: string, contestId: s
         <h2>{selectedProfile.passwordInitialized ? 'Connexion' : 'Créer votre mot de passe'}</h2>
         <p>{selectedProfile.passwordInitialized
           ? `Saisissez le mot de passe de ${selectedProfile.displayName}.`
-          : `Vérifiez le contact renseigné lors de l’inscription, puis choisissez le mot de passe de ${selectedProfile.displayName}.`}</p>
-        {!selectedProfile.passwordInitialized && <label className="field"><span>E-mail ou téléphone</span><input autoFocus required value={setupContact} onChange={event => { setSetupContact(event.target.value); setError('') }} /></label>}
-        <label className="field"><span>Mot de passe</span><input autoFocus={selectedProfile.passwordInitialized} required minLength={8} type="password" autoComplete={selectedProfile.passwordInitialized ? 'current-password' : 'new-password'} value={password} onChange={event => { setPassword(event.target.value); setError('') }} /></label>
-        {!selectedProfile.passwordInitialized && <label className="field"><span>Confirmer le mot de passe</span><input required minLength={8} type="password" autoComplete="new-password" value={passwordConfirmation} onChange={event => { setPasswordConfirmation(event.target.value); setError('') }} /></label>}
+          : `Choisissez le mot de passe de ${selectedProfile.displayName}.`}</p>
+        <label className="field"><span>Mot de passe</span><input autoFocus required minLength={6} type="password" autoComplete={selectedProfile.passwordInitialized ? 'current-password' : 'new-password'} value={password} onChange={event => { setPassword(event.target.value); setError('') }} /></label>
+        {!selectedProfile.passwordInitialized && <label className="field"><span>Confirmer le mot de passe</span><input required minLength={6} type="password" autoComplete="new-password" value={passwordConfirmation} onChange={event => { setPasswordConfirmation(event.target.value); setError('') }} /></label>}
         {error && <div className="password-error">{error}</div>}
         <button className="primary-btn password-submit" disabled={busy}>{busy ? 'Vérification…' : selectedProfile.passwordInitialized ? 'Se connecter' : 'Créer et se connecter'}</button>
       </form>
@@ -895,8 +890,8 @@ function UsersView({ tasks }: { tasks: Task[] }) {
       <input required value={contact} onChange={e => setContact(e.target.value)} placeholder="Email ou téléphone" />
       <input value={color} onChange={e => setColor(e.target.value)} placeholder="#476a9d" />
       <select value={role} onChange={e => setRole(e.target.value as UserRole)}>{Object.entries(roleLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select>
-      <input required minLength={8} type="password" autoComplete="new-password" value={memberPassword} onChange={e => { setMemberPassword(e.target.value); setPasswordError('') }} placeholder="Mot de passe initial" />
-      <input required minLength={8} type="password" autoComplete="new-password" value={memberPasswordConfirmation} onChange={e => { setMemberPasswordConfirmation(e.target.value); setPasswordError('') }} placeholder="Confirmer le mot de passe" />
+      <input required minLength={6} type="password" autoComplete="new-password" value={memberPassword} onChange={e => { setMemberPassword(e.target.value); setPasswordError('') }} placeholder="Mot de passe initial" />
+      <input required minLength={6} type="password" autoComplete="new-password" value={memberPasswordConfirmation} onChange={e => { setMemberPasswordConfirmation(e.target.value); setPasswordError('') }} placeholder="Confirmer le mot de passe" />
       {role === 'manager' && <div className="new-manager-categories"><span>Catégories gérées</span>{categories.map(category => <label key={category.id}><input type="checkbox" checked={managedCategoryIds.includes(category.id)} onChange={() => setManagedCategoryIds(current => current.includes(category.id) ? current.filter(id => id !== category.id) : [...current, category.id])} />{category.name}</label>)}</div>}
       {passwordError && <div className="password-error">{passwordError}</div>}
       <button className="primary-btn">Ajouter</button>
@@ -907,8 +902,8 @@ function UsersView({ tasks }: { tasks: Task[] }) {
       <input required value={contact} onChange={e => setContact(e.target.value)} placeholder="Email ou téléphone" />
       <input value={color} onChange={e => setColor(e.target.value)} placeholder="#476a9d" />
       <select value={role} onChange={e => setRole(e.target.value as UserRole)}>{Object.entries(roleLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select>
-      <input minLength={8} type="password" autoComplete="new-password" value={memberPassword} onChange={e => { setMemberPassword(e.target.value); setPasswordError('') }} placeholder="Nouveau mot de passe (facultatif)" />
-      <input required={Boolean(memberPassword)} minLength={8} type="password" autoComplete="new-password" value={memberPasswordConfirmation} onChange={e => { setMemberPasswordConfirmation(e.target.value); setPasswordError('') }} placeholder="Confirmer le mot de passe" />
+      <input minLength={6} type="password" autoComplete="new-password" value={memberPassword} onChange={e => { setMemberPassword(e.target.value); setPasswordError('') }} placeholder="Nouveau mot de passe (facultatif)" />
+      <input required={Boolean(memberPassword)} minLength={6} type="password" autoComplete="new-password" value={memberPasswordConfirmation} onChange={e => { setMemberPasswordConfirmation(e.target.value); setPasswordError('') }} placeholder="Confirmer le mot de passe" />
       {role === 'manager' && <div className="new-manager-categories"><span>Catégories gérées</span>{categories.map(category => <label key={category.id}><input type="checkbox" checked={managedCategoryIds.includes(category.id)} onChange={() => setManagedCategoryIds(current => current.includes(category.id) ? current.filter(id => id !== category.id) : [...current, category.id])} />{category.name}</label>)}</div>}
       {passwordError && <div className="password-error">{passwordError}</div>}
       <button className="primary-btn">Enregistrer</button>
@@ -1287,8 +1282,8 @@ function AccountView() {
     <form className="password-settings" onSubmit={event => void submit(event)}>
       <h3>Modifier mon mot de passe</h3>
       {!isRemoteAuth && <label className="field"><span>Mot de passe actuel</span><input required type="password" autoComplete="current-password" value={currentPassword} onChange={event => { setCurrentPassword(event.target.value); setStatus('') }} /></label>}
-      <label className="field"><span>Nouveau mot de passe</span><input required minLength={8} type="password" autoComplete="new-password" value={newPassword} onChange={event => { setNewPassword(event.target.value); setStatus('') }} /></label>
-      <label className="field"><span>Confirmer le nouveau mot de passe</span><input required minLength={8} type="password" autoComplete="new-password" value={confirmation} onChange={event => { setConfirmation(event.target.value); setStatus('') }} /></label>
+      <label className="field"><span>Nouveau mot de passe</span><input required minLength={6} type="password" autoComplete="new-password" value={newPassword} onChange={event => { setNewPassword(event.target.value); setStatus('') }} /></label>
+      <label className="field"><span>Confirmer le nouveau mot de passe</span><input required minLength={6} type="password" autoComplete="new-password" value={confirmation} onChange={event => { setConfirmation(event.target.value); setStatus('') }} /></label>
       {status && <div className={status.includes('mis à jour') ? 'password-success' : 'password-error'}>{status}</div>}
       <button className="primary-btn" disabled={busy}><LockKeyhole size={16} /> {busy ? 'Vérification…' : 'Modifier le mot de passe'}</button>
     </form>

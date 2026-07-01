@@ -95,8 +95,8 @@ Deno.serve(async request => {
       return jsonResponse({ userId: payload.userId })
     }
 
-    if (!payload.password || payload.password.length < 8) {
-      return jsonResponse({ error: 'Mot de passe de 8 caractères minimum requis.' }, 400)
+    if (!payload.password || payload.password.length < 6) {
+      return jsonResponse({ error: 'Mot de passe de 6 caractères minimum requis par Supabase.' }, 400)
     }
 
     if (payload.action === 'reset_password') {

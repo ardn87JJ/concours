@@ -1019,7 +1019,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       }),
     initializePassword: async (userId: string, password: string) => {
-      if (password.length < 8) return
+      if (password.length < 6) return
       if (dataBackend === 'supabase') return
       const credential = await createPasswordCredential(password)
       setData(current => {
@@ -1036,7 +1036,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       })
     },
     setUserPassword: async (userId: string, password: string) => {
-      if (password.length < 8) return
+      if (password.length < 6) return
       if (dataBackend === 'supabase') {
         await resetMemberPassword(data.activeContestId, userId, password)
         await reloadSupabaseSnapshot()
@@ -1059,7 +1059,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       })
     },
     changeOwnPassword: async (userId: string, password: string) => {
-      if (password.length < 8) return
+      if (password.length < 6) return
       if (dataBackend === 'supabase') {
         await changeOwnSupabasePassword(password)
         return

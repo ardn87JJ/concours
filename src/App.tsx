@@ -51,6 +51,7 @@ export default function App() {
   const [creatingTask, setCreatingTask] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [messageConversation, setMessageConversation] = useState<string>('general')
+  const [messageStartWithList, setMessageStartWithList] = useState(true)
   const [messageNavigationKey, setMessageNavigationKey] = useState(0)
 
   useEffect(() => {
@@ -108,7 +109,9 @@ export default function App() {
 
   useEffect(() => {
     const managerAllowed = currentUser.role === 'manager' && view === 'manager-tasks'
-    if (!isAdmin && !managerAllowed && view !== 'my-tasks' && view !== 'progress' && view !== 'messages' && view !== 'account') setView('my-tasks')
+    const personalViewAllowed = view === 'my-tasks' || view === 'messages' || view === 'account' ||
+      (currentUser.role !== 'volunteer' && view === 'progress')
+    if (!isAdmin && !managerAllowed && !personalViewAllowed) setView('my-tasks')
   }, [currentUser.role, isAdmin, view])
 
   useEffect(() => {
@@ -155,13 +158,22 @@ export default function App() {
 
   const navigate = (next: View) => {
     const managerAllowed = currentUser.role === 'manager' && next === 'manager-tasks'
-    if (!isAdmin && !managerAllowed && next !== 'my-tasks' && next !== 'progress' && next !== 'messages' && next !== 'account') {
+    const personalViewAllowed = next === 'my-tasks' || next === 'messages' || next === 'account' ||
+      (currentUser.role !== 'volunteer' && next === 'progress')
+    if (!isAdmin && !managerAllowed && !personalViewAllowed) {
       setView('my-tasks')
       setSidebarOpen(false)
       return
     }
     setView(next)
     setSidebarOpen(false)
+  }
+
+  const openMessagesHome = () => {
+    setMessageConversation('general')
+    setMessageStartWithList(currentUser.role === 'volunteer')
+    setMessageNavigationKey(current => current + 1)
+    navigate('messages')
   }
 
   const titles: Record<View, [string, string]> = {
@@ -191,7 +203,7 @@ export default function App() {
   }
 
   return (
-    <div className={`app-shell ${!isAdmin ? 'user-mode' : ''}`}>
+    <div className={`app-shell ${!isAdmin ? 'user-mode' : ''} ${currentUser.role === 'volunteer' ? 'volunteer-mode' : ''}`}>
       <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="brand"><div className="brand-mark">A</div><div><strong>Attelage</strong><span>{isAdmin ? 'PILOT' : 'MON ESPACE'}</span></div><button className="close-sidebar" onClick={() => setSidebarOpen(false)}><X /></button></div>
         <div className="contest-switcher">
@@ -212,7 +224,7 @@ export default function App() {
           </>}
           <span className="nav-label">MON ESPACE</span>
           {currentUser.role === 'manager' && <NavButton item={{ id: 'manager-tasks', label: 'Mes catégories', icon: Tag }} active={view === 'manager-tasks'} onClick={() => navigate('manager-tasks')} />}
-          {navPersonal.map(item => <NavButton key={item.id} item={item} active={view === item.id} onClick={() => navigate(item.id)} count={item.id === 'my-tasks' ? app.tasks.filter(task => task.assigneeIds.includes(currentUser.id) && task.status !== 'done').length : item.id === 'messages' && unreadMessages ? unreadMessages : undefined} />)}
+          {navPersonal.filter(item => currentUser.role !== 'volunteer' || item.id !== 'progress').map(item => <NavButton key={item.id} item={item} active={view === item.id} onClick={() => item.id === 'messages' ? openMessagesHome() : navigate(item.id)} count={item.id === 'my-tasks' ? app.tasks.filter(task => task.assigneeIds.includes(currentUser.id) && task.status !== 'done').length : item.id === 'messages' && unreadMessages ? unreadMessages : undefined} />)}
         </nav>
         <div className="sidebar-progress">
           <div><span>{isAdmin ? 'Progression globale' : 'Ma progression'}</span><strong>{isAdmin ? progress : personalProgress}%</strong></div><ProgressBar value={isAdmin ? progress : personalProgress} compact /><small>{isAdmin ? completed : personalCompleted} tâches sur {isAdmin ? contestTasks.length : personalTasks.length}</small>
@@ -249,6 +261,7 @@ export default function App() {
               ? message.senderId === authenticatedUser.id ? message.recipientId : message.senderId
               : 'general'
             setMessageConversation(target ?? 'general')
+            setMessageStartWithList(false)
             setMessageNavigationKey(current => current + 1)
             setView('messages')
             setNotificationsOpen(false)
@@ -270,7 +283,7 @@ export default function App() {
           {view === 'manager-tasks' && currentUser.role === 'manager' && <ManagerTasksView tasks={contestTasks} onOpen={setSelectedTask} />}
           {view === 'my-tasks' && <MyTasks tasks={contestTasks.filter(task => task.assigneeIds.includes(currentUser.id))} onOpen={openTask} expandedTaskId={expandedTaskId} />}
           {view === 'progress' && <UserProgressView tasks={contestTasks} />}
-          {view === 'messages' && <MessagingView key={messageNavigationKey} initialConversation={messageConversation} viewerUserId={authenticatedUser.id} />}
+          {view === 'messages' && <MessagingView key={messageNavigationKey} initialConversation={messageConversation} startWithList={messageStartWithList && currentUser.role === 'volunteer'} viewerUserId={authenticatedUser.id} />}
           {isAdmin && view === 'settings' && <SettingsView />}
           {view === 'account' && <AccountView />}
         </div>
@@ -278,8 +291,8 @@ export default function App() {
       {!isAdmin && <nav className="user-bottom-nav">
         {currentUser.role === 'manager' && <button className={view === 'manager-tasks' ? 'active' : ''} onClick={() => navigate('manager-tasks')}><Tag size={21} /><span>Mes catégories</span></button>}
         <button className={view === 'my-tasks' ? 'active' : ''} onClick={() => navigate('my-tasks')}><CheckCircle2 size={21} /><span>Mes tâches</span></button>
-        <button className={view === 'progress' ? 'active' : ''} onClick={() => navigate('progress')}><BarChart3 size={21} /><span>Avancement</span></button>
-        <button className={view === 'messages' ? 'active' : ''} onClick={() => navigate('messages')}><MessageCircle size={21} /><span>Messagerie</span></button>
+        {currentUser.role !== 'volunteer' && <button className={view === 'progress' ? 'active' : ''} onClick={() => navigate('progress')}><BarChart3 size={21} /><span>Avancement</span></button>}
+        <button className={view === 'messages' ? 'active' : ''} onClick={openMessagesHome}><MessageCircle size={21} /><span>Messagerie</span></button>
       </nav>}
       {(selectedTask || creatingTask) && <TaskModal task={selectedTask ?? undefined} onClose={() => { setSelectedTask(null); setCreatingTask(false) }} />}
     </div>
@@ -1180,10 +1193,10 @@ function UserProgressView({ tasks }: { tasks: Task[] }) {
   </div>
 }
 
-function MessagingView({ initialConversation = 'general', viewerUserId }: { initialConversation?: string; viewerUserId: string }) {
+function MessagingView({ initialConversation = 'general', startWithList = false, viewerUserId }: { initialConversation?: string; startWithList?: boolean; viewerUserId: string }) {
   const { users, messages, activeContestId, sendMessage, markConversationRead } = useApp()
   const [conversation, setConversation] = useState<'general' | string>(initialConversation)
-  const [mobileChatOpen, setMobileChatOpen] = useState(true)
+  const [mobileChatOpen, setMobileChatOpen] = useState(!startWithList)
   const [search, setSearch] = useState('')
   const [text, setText] = useState('')
   const [sendError, setSendError] = useState('')
@@ -1204,8 +1217,8 @@ function MessagingView({ initialConversation = 'general', viewerUserId }: { init
 
   useEffect(() => {
     setConversation(initialConversation)
-    setMobileChatOpen(true)
-  }, [initialConversation])
+    setMobileChatOpen(!startWithList)
+  }, [initialConversation, startWithList])
 
   useEffect(() => {
     if (conversation === 'general') markConversationRead()

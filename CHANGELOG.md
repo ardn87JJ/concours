@@ -8,6 +8,10 @@ applicative `0.1.0`.
 
 ### Ajouté
 
+- navigation bénévole simplifiée à deux onglets (« Mes tâches » et
+  « Messagerie »), déplacée en haut de l’écran avec un fond vert sombre ;
+- ouverture par défaut de la messagerie bénévole sur la liste des conversations,
+  tout en conservant l’ouverture directe depuis une notification.
 - vue bénévole repensée pour mobile avec cartes colorées, statistiques lisibles
   et détail des tâches dépliable directement dans la liste ;
 - commandes tactiles de statut, commentaires et ajout au calendrier intégrés

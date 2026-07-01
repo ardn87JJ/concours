@@ -73,6 +73,9 @@ applicative `0.1.0`.
   réellement créé avant de définir son mot de passe initial.
 - la longueur minimale applicative des mots de passe passe de 8 à 6 caractères,
   qui est la limite minimale imposée par Supabase Auth.
+- le compositeur de messages reste ancré dans la zone visible sur mobile et
+  lorsque le clavier virtuel réduit la hauteur disponible ; les vues de
+  supervision indiquent explicitement leur mode lecture seule.
 
 ### Vérifié
 

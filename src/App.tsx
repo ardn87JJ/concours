@@ -1228,11 +1228,13 @@ function MessagingView({ initialConversation = 'general' }: { initialConversatio
           </div>
         })}
       </div>
-      {!isSupervision && <form className="message-composer" onSubmit={submit}>
-        <Avatar user={currentUser} size="sm" />
-        <input value={text} onChange={event => setText(event.target.value)} placeholder={conversation === 'general' ? 'Écrire à toute l’équipe…' : `Écrire à ${selectedUser?.name}…`} />
-        <button disabled={!text.trim()} aria-label="Envoyer"><Send size={17} /></button>
-      </form>}
+      {isSupervision
+        ? <div className="message-readonly"><ShieldCheck size={16} /><span>Vue de supervision en lecture seule. Sélectionnez le canal général ou votre propre conversation pour écrire.</span></div>
+        : <form className="message-composer" onSubmit={submit}>
+          <Avatar user={currentUser} size="sm" />
+          <input value={text} onChange={event => setText(event.target.value)} placeholder={conversation === 'general' ? 'Écrire à toute l’équipe…' : `Écrire à ${selectedUser?.name}…`} />
+          <button disabled={!text.trim()} aria-label="Envoyer"><Send size={17} /></button>
+        </form>}
     </div>
   </section>
 }

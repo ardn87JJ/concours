@@ -81,6 +81,10 @@ applicative `0.1.0`.
 - l’envoi de message attend désormais la réponse Supabase, recharge le message
   dès son insertion et affiche les erreurs au lieu de les ignorer ; le panneau
   desktop utilise une colonne flexible indépendante de CSS Grid.
+- l’écriture d’un message, de son état de lecture, de ses notifications et de
+  son audit est regroupée dans une fonction SQL transactionnelle ; le
+  compositeur est positionné explicitement au bas de toute conversation
+  sélectionnée.
 
 ### Vérifié
 

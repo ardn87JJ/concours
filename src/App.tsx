@@ -1128,7 +1128,8 @@ function MessagingView({ initialConversation = 'general' }: { initialConversatio
   })
   const selectedUser = users.find(user => user.id === conversation)
   const pairUsers = selectedPair.map(id => users.find(user => user.id === id)).filter(Boolean)
-  const isSupervision = conversation === 'all' || selectedPair.length === 2
+  const canSendMessage = conversation === 'general' || Boolean(selectedUser)
+  const isSupervision = !canSendMessage
   const generalUnread = contestMessages.filter(message => !message.recipientId && !message.readByIds.includes(currentUserId)).length
 
   useEffect(() => {
@@ -1238,14 +1239,14 @@ function MessagingView({ initialConversation = 'general' }: { initialConversatio
           </div>
         })}
       </div>
-      {isSupervision
-        ? <div className="message-readonly"><ShieldCheck size={16} /><span>Vue de supervision en lecture seule. Sélectionnez le canal général ou votre propre conversation pour écrire.</span></div>
-        : <form className="message-composer" onSubmit={event => { void submit(event) }}>
+      {canSendMessage
+        ? <form className="message-composer" onSubmit={event => { void submit(event) }}>
           {sendError && <span className="message-send-error">{sendError}</span>}
           <Avatar user={currentUser} size="sm" />
           <input value={text} onChange={event => { setText(event.target.value); setSendError('') }} placeholder={conversation === 'general' ? 'Écrire à toute l’équipe…' : `Écrire à ${selectedUser?.name}…`} />
           <button disabled={!text.trim() || sending} aria-label="Envoyer"><Send size={17} /></button>
-        </form>}
+        </form>
+        : <div className="message-readonly"><ShieldCheck size={16} /><span>Vue de supervision en lecture seule. Sélectionnez le canal général ou votre propre conversation pour écrire.</span></div>}
     </div>
   </section>
 }

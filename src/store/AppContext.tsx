@@ -884,56 +884,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       if (dataBackend === 'supabase') {
         if (!supabase) throw new Error('Supabase n’est pas configuré.')
-        const { data: { user }, error: userError } = await supabase.auth.getUser()
-        if (userError || !user) throw new Error('Votre session a expiré. Reconnectez-vous.')
-        const senderId = user.id
-        const recipients = recipientId
-          ? [recipientId]
-          : getContestUsers(data).filter(member => member.id !== senderId).map(member => member.id)
-
-        const { error } = await supabase.from('messages').insert({
-          id,
-          contest_id: contestId,
-          sender_id: senderId,
-          recipient_id: recipientId ?? null,
-          text: messageText,
+        const { error } = await supabase.rpc('send_message', {
+          target_contest_id: contestId,
+          target_recipient_id: recipientId ?? null,
+          message_text: messageText,
         })
         if (error) throw error
-
-        await reloadSupabaseSnapshot()
-
-        const secondaryWrites = [
-          supabase.from('message_reads').insert({
-            message_id: id,
-            user_id: senderId,
-            contest_id: contestId,
-          }),
-          supabase.from('audit_events').insert({
-            id: crypto.randomUUID(),
-            contest_id: contestId,
-            actor_id: senderId,
-            action: 'message',
-            entity_type: 'message',
-            entity_id: id,
-            description: recipientId ? 'a envoyé un message privé' : 'a écrit dans le canal général',
-          }),
-        ]
-        if (recipients.length) {
-          secondaryWrites.push(supabase.from('notifications').insert(recipients.map(userId => ({
-            id: crypto.randomUUID(),
-            contest_id: contestId,
-            user_id: userId,
-            type: 'message' as const,
-            title: recipientId ? 'Nouveau message privé' : 'Nouveau message dans le canal général',
-            text: messageText.slice(0, 90),
-            task_id: null,
-            message_id: id,
-            read_at: null,
-          }))))
-        }
-        const results = await Promise.all(secondaryWrites)
-        const secondaryError = results.find(result => result.error)?.error
-        if (secondaryError) console.error('Écriture secondaire du message incomplète', secondaryError)
         await reloadSupabaseSnapshot()
         return
       }

@@ -67,6 +67,27 @@ const requireClient = () => {
   return supabase
 }
 
+const throwFunctionError = async (data: unknown, error: unknown) => {
+  if (data && typeof data === 'object' && 'error' in data && typeof data.error === 'string') {
+    throw new Error(data.error)
+  }
+  if (!error) return
+
+  const context = error && typeof error === 'object' && 'context' in error
+    ? error.context
+    : null
+  if (context instanceof Response) {
+    try {
+      const payload = await context.clone().json() as { error?: unknown }
+      if (typeof payload.error === 'string') throw new Error(payload.error)
+    } catch (contextError) {
+      if (contextError instanceof Error && !contextError.name.includes('SyntaxError')) throw contextError
+    }
+  }
+
+  throw error
+}
+
 const internalEmail = (userId: string) => `${userId}@users.attelage-pilot.invalid`
 
 export const dataBackend = import.meta.env.VITE_DATA_BACKEND === 'supabase' ? 'supabase' : 'local'
@@ -115,8 +136,7 @@ export async function bootstrapAdmin(input: BootstrapAdminInput) {
   const { data, error } = await requireClient().functions.invoke('bootstrap-admin', {
     body: input,
   })
-  if (error) throw error
-  if (data?.error) throw new Error(data.error)
+  await throwFunctionError(data, error)
   return data as { contestId: string; userId: string }
 }
 
@@ -124,8 +144,7 @@ export async function createMember(input: CreateMemberInput) {
   const { data, error } = await requireClient().functions.invoke('manage-member', {
     body: { action: 'create', ...input },
   })
-  if (error) throw error
-  if (data?.error) throw new Error(data.error)
+  await throwFunctionError(data, error)
   return data as { userId: string }
 }
 
@@ -133,8 +152,7 @@ export async function removeMember(contestId: string, userId: string) {
   const { data, error } = await requireClient().functions.invoke('manage-member', {
     body: { action: 'delete', contestId, userId },
   })
-  if (error) throw error
-  if (data?.error) throw new Error(data.error)
+  await throwFunctionError(data, error)
   return data as { userId: string }
 }
 
@@ -142,8 +160,7 @@ export async function resetMemberPassword(contestId: string, userId: string, pas
   const { data, error } = await requireClient().functions.invoke('manage-member', {
     body: { action: 'reset_password', contestId, userId, password },
   })
-  if (error) throw error
-  if (data?.error) throw new Error(data.error)
+  await throwFunctionError(data, error)
   return data as { userId: string }
 }
 
@@ -151,8 +168,7 @@ export async function createContest(input: CreateContestInput) {
   const { data, error } = await requireClient().functions.invoke('create-contest', {
     body: input,
   })
-  if (error) throw error
-  if (data?.error) throw new Error(data.error)
+  await throwFunctionError(data, error)
   return data as { contestId: string }
 }
 
@@ -160,8 +176,7 @@ export async function deleteContest(contestId: string) {
   const { data, error } = await requireClient().functions.invoke('delete-contest', {
     body: { contestId },
   })
-  if (error) throw error
-  if (data?.error) throw new Error(data.error)
+  await throwFunctionError(data, error)
   return data as { contestId: string }
 }
 

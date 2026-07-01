@@ -59,6 +59,10 @@ applicative `0.1.0`.
 - l'import CSV attend désormais la création effective des profils Supabase,
   conserve les lignes échouées et affiche les erreurs au lieu de confirmer
   prématurément l'opération.
+- les Edge Functions authentifiées valident désormais la session dans leur
+  propre code sans dépendre du contrôle JWT historique incompatible avec les
+  nouvelles clés Supabase ; les messages d'erreur serveur sont transmis au
+  frontend.
 
 ### Vérifié
 

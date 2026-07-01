@@ -63,6 +63,9 @@ applicative `0.1.0`.
   propre code sans dépendre du contrôle JWT historique incompatible avec les
   nouvelles clés Supabase ; les messages d'erreur serveur sont transmis au
   frontend.
+- les prérequêtes CORS des Edge Functions acceptent tous les en-têtes envoyés
+  automatiquement par `supabase-js`, notamment `x-client-info`, afin que les
+  créations de membres atteignent effectivement le serveur.
 
 ### Vérifié
 

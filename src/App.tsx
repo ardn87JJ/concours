@@ -1051,10 +1051,6 @@ function MyTasks({ tasks, onOpen, expandedTaskId }: { tasks: Task[]; onOpen: (ta
             <ChevronRight className="simple-task-chevron" size={20} />
           </button>
           {expanded && <VolunteerTaskDetails task={task} onBlock={() => { setBlockingTask(task); setBlockReason('') }} />}
-          <div className="simple-task-actions">
-            <button className="simple-block" onClick={() => { setBlockingTask(task); setBlockReason('') }}><AlertOctagon size={18} /> Je suis bloqué</button>
-            <button className="simple-complete" onClick={() => updateTask(task.id, { status: 'done' })}><Check size={19} /> C’est terminé</button>
-          </div>
         </article>})}
         {!open.length && <div className="all-done"><CheckCircle2 size={34} /><strong>Tout est terminé</strong><span>Vous n’avez aucune action en attente.</span></div>}
       </div>
@@ -1100,8 +1096,13 @@ function MyTasks({ tasks, onOpen, expandedTaskId }: { tasks: Task[]; onOpen: (ta
 function VolunteerTaskDetails({ task, onBlock }: { task: Task; onBlock: () => void }) {
   const { addComment, updateTask, users, categories, contests, activeContestId } = useApp()
   const [comment, setComment] = useState('')
+  const [pendingStatus, setPendingStatus] = useState<TaskStatus>(task.status)
   const category = categories.find(item => item.id === task.categoryId)
   const contest = contests.find(item => item.id === activeContestId)
+
+  useEffect(() => {
+    setPendingStatus(task.status)
+  }, [task.status])
 
   const submitComment = (event: FormEvent) => {
     event.preventDefault()
@@ -1109,6 +1110,14 @@ function VolunteerTaskDetails({ task, onBlock }: { task: Task; onBlock: () => vo
     if (!text) return
     addComment(task.id, text)
     setComment('')
+  }
+
+  const submitTaskUpdate = () => {
+    if (pendingStatus === 'blocked') {
+      onBlock()
+      return
+    }
+    updateTask(task.id, { status: pendingStatus })
   }
 
   return <section className="volunteer-task-details" id={`volunteer-task-${task.id}`}>
@@ -1122,13 +1131,14 @@ function VolunteerTaskDetails({ task, onBlock }: { task: Task; onBlock: () => vo
       <div><span className="volunteer-detail-icon detail-priority"><Flag size={19} /></span><span><small>Priorité</small><strong>{priorityLabels[task.priority]}</strong></span></div>
     </div>
     <div className="volunteer-status">
-      <div><strong>Où en êtes-vous ?</strong><small>Votre équipe voit immédiatement le changement.</small></div>
+      <div><strong>Où en êtes-vous ?</strong><small>Choisissez un statut, puis validez la mise à jour.</small></div>
       <div>
-        <button className={task.status === 'todo' ? 'active' : ''} onClick={() => updateTask(task.id, { status: 'todo' })}><ListTodo size={17} /> À faire</button>
-        <button className={task.status === 'in_progress' ? 'active' : ''} onClick={() => updateTask(task.id, { status: 'in_progress' })}><CircleDot size={17} /> En cours</button>
-        <button className={task.status === 'blocked' ? 'active blocked' : ''} onClick={onBlock}><AlertOctagon size={17} /> Bloqué</button>
-        <button className={task.status === 'done' ? 'active done' : ''} onClick={() => updateTask(task.id, { status: 'done' })}><CheckCircle2 size={17} /> Terminé</button>
+        <button className={pendingStatus === 'todo' ? 'active' : ''} onClick={() => setPendingStatus('todo')}><ListTodo size={17} /> À faire</button>
+        <button className={pendingStatus === 'in_progress' ? 'active' : ''} onClick={() => setPendingStatus('in_progress')}><CircleDot size={17} /> En cours</button>
+        <button className={pendingStatus === 'blocked' ? 'active blocked' : ''} onClick={() => setPendingStatus('blocked')}><AlertOctagon size={17} /> Bloqué</button>
+        <button className={pendingStatus === 'done' ? 'active done' : ''} onClick={() => setPendingStatus('done')}><CheckCircle2 size={17} /> Terminé</button>
       </div>
+      {pendingStatus !== task.status && <p className="volunteer-pending-change">Modification prête à être envoyée.</p>}
     </div>
     <section className="volunteer-comments">
       <header><MessageCircle size={19} /><strong>Échanges sur cette tâche</strong><span>{task.comments.length}</span></header>
@@ -1145,6 +1155,7 @@ function VolunteerTaskDetails({ task, onBlock }: { task: Task; onBlock: () => vo
       </form>
     </section>
     {contest && <button className="volunteer-calendar" onClick={() => downloadTaskCalendar(task, contest, category?.name)}><CalendarPlus size={18} /> Ajouter cette tâche à mon calendrier</button>}
+    <button className="volunteer-update-task" onClick={submitTaskUpdate} disabled={pendingStatus === task.status}><Send size={18} /> Mettre à jour la tâche</button>
   </section>
 }
 

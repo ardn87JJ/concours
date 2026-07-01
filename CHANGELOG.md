@@ -64,6 +64,9 @@ applicative `0.1.0`.
 
 ### Corrigé
 
+- les choix de statut de la vue bénévole sont désormais enregistrés par un
+  bouton unique « Mettre à jour la tâche » ; les anciennes actions rapides
+  redondantes « Je suis bloqué » et « C’est terminé » sont supprimées.
 - Safari sur iPhone ne zoome plus automatiquement la page lors de la saisie du
   mot de passe ou d’un formulaire mobile, et la largeur reste bornée au viewport.
 - l'import CSV attend désormais la création effective des profils Supabase,

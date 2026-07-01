@@ -116,7 +116,8 @@ doivent être validées avant toute évolution fonctionnelle.
   à finir la couverture complète des parcours visibles ;
 - [ ] activer et tester les abonnements Realtime ;
 - [ ] définir les exigences RGPD et la politique de conservation ;
-- [ ] faire valider la supervision des messages directs ;
+- [x] limiter les messages directs à leurs deux participants, administrateurs
+  compris ;
 - [ ] ajouter sauvegarde, synchronisation et récupération de compte ;
 - [ ] définir les environnements développement, préproduction et production.
 

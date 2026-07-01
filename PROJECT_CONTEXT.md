@@ -110,7 +110,7 @@ Le bénévole consulte ses tâches dans une interface simplifiée, met leur stat
 - espaces personnels responsable et bénévole ;
 - commentaires, blocages, notifications et activité ;
 - messagerie générale et directe ;
-- supervision des échanges par l'administrateur ;
+- confidentialité des messages directs entre leurs participants ;
 - import de membres, export des tâches et sauvegarde du concours ;
 - mots de passe locaux de tous les profils avec migration de version ;
 - synchronisation du stockage lors des événements `storage`, `focus` et
@@ -152,7 +152,7 @@ Le modèle contient plusieurs concours et les tâches, utilisateurs, messages et
 Le multi-concours doit être considéré comme expérimental tant que son modèle
 d'isolation et son parcours de création ne sont pas validés.
 
-### Authentification et supervision
+### Authentification et messagerie privée
 
 Chaque profil exige désormais un mot de passe. Le premier administrateur peut
 initialiser le sien lors de sa première connexion. Un administrateur définit ou
@@ -160,15 +160,12 @@ réinitialise ensuite ceux des membres depuis la gestion de l'équipe. Un membre
 déjà connecté peut modifier son secret depuis « Mon profil » après saisie du
 mot de passe actuel.
 
-Les membres importés par CSV n'ont initialement aucun mot de passe et restent
-inaccessibles jusqu'à sa définition par un administrateur.
+Les membres importés par CSV initialisent leur mot de passe lors de leur
+première connexion.
 
-Les administrateurs peuvent lire les conversations directes. Ce choix reste à
-confirmer avant tout usage réel.
-
-Dans Supabase, cette supervision est explicitement autorisée par une politique
-RLS sur `messages`. Toute évolution de cette règle exige une migration et une
-validation métier.
+Les administrateurs ne peuvent pas lire les conversations directes auxquelles
+ils ne participent pas. Les politiques RLS de `messages` et des états de
+lecture appliquent la même confidentialité à tous les rôles.
 
 ### Source de vérité des artefacts
 
@@ -179,7 +176,7 @@ restent suivis ou sont retirés du suivi dans une intervention dédiée.
 ## À ne pas modifier sans validation
 
 - les rôles et leur matrice de droits ;
-- la visibilité administrateur sur les messages directs ;
+- la confidentialité des messages directs ;
 - le format ou la clé de stockage sans stratégie de migration ;
 - l'algorithme ou la version des mots de passe sans migration testée ;
 - la suppression en cascade d'un concours, d'une catégorie ou d'un utilisateur ;

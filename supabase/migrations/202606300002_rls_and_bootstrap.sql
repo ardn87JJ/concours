@@ -93,7 +93,6 @@ as $$
         recipient_id is null
         or sender_id = (select auth.uid())
         or recipient_id = (select auth.uid())
-        or public.has_contest_role(contest_id, array['admin']::public.user_role[])
       )
   );
 $$;
@@ -440,7 +439,7 @@ using (
   or public.has_contest_role(contest_id, array['admin']::public.user_role[])
 );
 
-create policy messages_select_authorized
+create policy messages_select_participant
 on public.messages for select
 to authenticated
 using (
@@ -449,7 +448,6 @@ using (
     recipient_id is null
     or sender_id = (select auth.uid())
     or recipient_id = (select auth.uid())
-    or public.has_contest_role(contest_id, array['admin']::public.user_role[])
   )
 );
 
@@ -461,13 +459,10 @@ with check (
   and sender_id = (select auth.uid())
 );
 
-create policy messages_delete_sender_or_admin
+create policy messages_delete_sender
 on public.messages for delete
 to authenticated
-using (
-  sender_id = (select auth.uid())
-  or public.has_contest_role(contest_id, array['admin']::public.user_role[])
-);
+using (sender_id = (select auth.uid()));
 
 create policy message_reads_select_authorized
 on public.message_reads for select
@@ -488,13 +483,10 @@ to authenticated
 using (user_id = (select auth.uid()))
 with check (user_id = (select auth.uid()));
 
-create policy notifications_select_owner_or_admin
+create policy notifications_select_owner
 on public.notifications for select
 to authenticated
-using (
-  user_id = (select auth.uid())
-  or public.has_contest_role(contest_id, array['admin']::public.user_role[])
-);
+using (user_id = (select auth.uid()));
 
 create policy notifications_update_owner
 on public.notifications for update

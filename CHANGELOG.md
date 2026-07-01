@@ -89,8 +89,11 @@ applicative `0.1.0`.
   panneau, empêchant une longue liste de membres de repousser le compositeur
   plusieurs écrans plus bas sur ordinateur.
 - les messages directs, leurs aperçus et leur état « Vous » utilisent désormais
-  exclusivement l’identité réellement authentifiée ; les échanges entre
-  autres membres restent cantonnés à la supervision administrateur.
+  exclusivement l’identité réellement authentifiée.
+- la supervision administrateur des conversations privées est supprimée :
+  chaque échange direct est visible uniquement par ses deux participants.
+- les messages, lectures, notifications de messagerie et audits existants sont
+  purgés afin de repartir avec un historique cohérent.
 
 ### Vérifié
 

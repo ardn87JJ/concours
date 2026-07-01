@@ -75,7 +75,7 @@ npm run lint
 ## Points nécessitant une validation humaine
 
 - matrice des rôles et permissions ;
-- supervision administrateur des messages directs ;
+- confidentialité des messages directs entre leurs seuls participants ;
 - stratégie multi-concours ;
 - changement de stockage ou ajout d'un backend ;
 - migration des mots de passe ou de la clé de stockage ;

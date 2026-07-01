@@ -1112,24 +1112,13 @@ function MessagingView({ initialConversation = 'general', viewerUserId }: { init
   const contacts = users.filter(user =>
     user.id !== viewerUserId && user.name.toLocaleLowerCase('fr').includes(search.toLocaleLowerCase('fr')))
   const contestMessages = messages.filter(message => message.contestId === activeContestId)
-  const directPairs = [...new Set(contestMessages
-    .filter(message => message.recipientId)
-    .map(message => [message.senderId, message.recipientId!].sort().join(':')))]
-  const selectedPair = conversation.startsWith('pair:') ? conversation.slice(5).split(':') : []
   const visibleMessages = contestMessages.filter(message => {
-    if (conversation === 'all' && isAdmin) return true
     if (conversation === 'general') return !message.recipientId
-    if (selectedPair.length === 2) {
-      return Boolean(message.recipientId) &&
-        selectedPair.includes(message.senderId) && selectedPair.includes(message.recipientId!)
-    }
     return (message.senderId === viewerUserId && message.recipientId === conversation) ||
       (message.senderId === conversation && message.recipientId === viewerUserId)
   })
   const selectedUser = users.find(user => user.id === conversation)
-  const pairUsers = selectedPair.map(id => users.find(user => user.id === id)).filter(Boolean)
   const canSendMessage = conversation === 'general' || Boolean(selectedUser)
-  const isSupervision = !canSendMessage
   const generalUnread = contestMessages.filter(message => !message.recipientId && !message.readByIds.includes(viewerUserId)).length
 
   useEffect(() => {
@@ -1139,12 +1128,12 @@ function MessagingView({ initialConversation = 'general', viewerUserId }: { init
 
   useEffect(() => {
     if (conversation === 'general') markConversationRead()
-    else if (!isSupervision) markConversationRead(conversation)
-  }, [conversation, isSupervision, markConversationRead])
+    else if (selectedUser) markConversationRead(conversation)
+  }, [conversation, markConversationRead, selectedUser])
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
-    if (!text.trim() || isSupervision || sending) return
+    if (!text.trim() || !canSendMessage || sending) return
     setSending(true)
     setSendError('')
     try {
@@ -1172,10 +1161,6 @@ function MessagingView({ initialConversation = 'general', viewerUserId }: { init
       <header><h2>Conversations</h2><span>{users.length} membres</span></header>
       <label className="message-search"><Search size={15} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Rechercher un membre…" /></label>
       <div className="conversation-scroll">
-        {isAdmin && <button className={`supervision-link ${conversation === 'all' ? 'active' : ''}`} onClick={() => openConversation('all')}>
-          <span className="supervision-avatar"><ShieldCheck size={18} /></span>
-          <span><strong>Tous les échanges</strong><small>{contestMessages.length} messages à superviser</small></span>
-        </button>}
         <button className={conversation === 'general' ? 'active' : ''} onClick={() => openConversation('general')}>
           <span className="general-avatar"><Hash size={18} /></span>
           <span><strong>Canal général</strong><small>Visible par toute l’équipe</small></span>{generalUnread > 0 && <em className="unread-count">{generalUnread}</em>}
@@ -1190,39 +1175,23 @@ function MessagingView({ initialConversation = 'general', viewerUserId }: { init
             {unread > 0 ? <em className="unread-count">{unread}</em> : last && <time>{new Date(last.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</time>}
           </button>
         })}
-        {isAdmin && directPairs.length > 0 && <>
-          <div className="conversation-label">SUPERVISION DES CONVERSATIONS</div>
-          {directPairs.map(pair => {
-            const members = pair.split(':').map(id => users.find(user => user.id === id)).filter(Boolean)
-            const label = members.map(user => user?.name).join(' ↔ ')
-            return <button key={pair} className={conversation === `pair:${pair}` ? 'active' : ''} onClick={() => openConversation(`pair:${pair}`)}>
-              <span className="pair-avatars">{members.map(user => <Avatar key={user?.id} user={user} size="sm" />)}</span>
-              <span><strong>{label}</strong><small>Conversation directe</small></span>
-            </button>
-          })}
-        </>}
       </div>
     </aside>
     <div className="chat">
       <header className="chat-header">
         <button className="mobile-chat-back" onClick={() => setMobileChatOpen(false)} aria-label="Revenir aux conversations"><ArrowLeft size={18} /></button>
-        {conversation === 'all'
-          ? <><span className="supervision-avatar"><ShieldCheck size={18} /></span><div><strong>Tous les échanges</strong><small>Vue de supervision administrateur</small></div></>
-          : selectedPair.length === 2
-            ? <><span className="pair-avatars">{pairUsers.map(user => <Avatar key={user?.id} user={user} size="sm" />)}</span><div><strong>{pairUsers.map(user => user?.name).join(' ↔ ')}</strong><small>Conversation directe · lecture administrateur</small></div></>
-          : conversation === 'general'
+        {conversation === 'general'
           ? <><span className="general-avatar"><Hash size={18} /></span><div><strong>Canal général</strong><small>Toute l’équipe peut lire et répondre</small></div></>
           : <><Avatar user={selectedUser} /><div><strong>{selectedUser?.name}</strong><small>{selectedUser && roleLabels[selectedUser.role]}</small></div></>}
       </header>
       <div className="message-thread">
         <div className="conversation-intro">
-          {isSupervision ? <ShieldCheck size={23} /> : conversation === 'general' ? <Hash size={23} /> : <Avatar user={selectedUser} size="lg" />}
-          <strong>{conversation === 'all' ? 'Supervision des échanges' : selectedPair.length === 2 ? pairUsers.map(user => user?.name).join(' ↔ ') : conversation === 'general' ? 'Canal général' : selectedUser?.name}</strong>
-          <span>{conversation === 'all' ? 'Tous les messages du concours sont affichés chronologiquement.' : selectedPair.length === 2 ? 'Cette conversation est consultable en lecture seule.' : conversation === 'general' ? 'Utilisez ce canal pour les informations utiles à toute l’équipe.' : `Début de votre conversation avec ${selectedUser?.name}.`}</span>
+          {conversation === 'general' ? <Hash size={23} /> : <Avatar user={selectedUser} size="lg" />}
+          <strong>{conversation === 'general' ? 'Canal général' : selectedUser?.name}</strong>
+          <span>{conversation === 'general' ? 'Utilisez ce canal pour les informations utiles à toute l’équipe.' : `Début de votre conversation avec ${selectedUser?.name}.`}</span>
         </div>
         {visibleMessages.map((message, index) => {
           const sender = users.find(user => user.id === message.senderId)
-          const recipient = users.find(user => user.id === message.recipientId)
           const mine = message.senderId === viewerUserId
           const previous = visibleMessages[index - 1]
           const showAuthor = !previous || previous.senderId !== message.senderId ||
@@ -1230,7 +1199,7 @@ function MessagingView({ initialConversation = 'general', viewerUserId }: { init
           return <div className={`message ${mine ? 'mine' : ''} ${!showAuthor ? 'continued' : ''}`} key={message.id}>
             {showAuthor && <Avatar user={sender} size="sm" />}
             <div>
-              {showAuthor && <div className="message-meta"><strong>{mine ? 'Vous' : sender?.name}{isSupervision && recipient ? ` → ${recipient.name}` : ''}</strong><time>{new Date(message.createdAt).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</time></div>}
+              {showAuthor && <div className="message-meta"><strong>{mine ? 'Vous' : sender?.name}</strong><time>{new Date(message.createdAt).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</time></div>}
               <p>{message.text}</p>
               {mine && <small className="message-read-state">{message.recipientId
                 ? message.readByIds.includes(message.recipientId) ? 'Lu' : 'Envoyé'
@@ -1239,14 +1208,12 @@ function MessagingView({ initialConversation = 'general', viewerUserId }: { init
           </div>
         })}
       </div>
-      {canSendMessage
-        ? <form className="message-composer" onSubmit={event => { void submit(event) }}>
+      {canSendMessage && <form className="message-composer" onSubmit={event => { void submit(event) }}>
           {sendError && <span className="message-send-error">{sendError}</span>}
           <Avatar user={currentUser} size="sm" />
           <input value={text} onChange={event => { setText(event.target.value); setSendError('') }} placeholder={conversation === 'general' ? 'Écrire à toute l’équipe…' : `Écrire à ${selectedUser?.name}…`} />
           <button disabled={!text.trim() || sending} aria-label="Envoyer"><Send size={17} /></button>
-        </form>
-        : <div className="message-readonly"><ShieldCheck size={16} /><span>Vue de supervision en lecture seule. Sélectionnez le canal général ou votre propre conversation pour écrire.</span></div>}
+        </form>}
     </div>
   </section>
 }

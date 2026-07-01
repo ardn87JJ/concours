@@ -136,7 +136,7 @@ toute nouvelle initialisation dès qu'un concours existe.
 - import CSV des membres et export CSV des tâches ;
 - sauvegarde JSON sans empreintes de mot de passe ;
 - espaces adaptés aux responsables et bénévoles ;
-- messagerie générale, messages directs et supervision administrateur ;
+- messagerie générale et messages directs privés entre leurs participants ;
 - notifications et journal d'activité ;
 - synchronisation locale entre onglets et au retour du focus ;
 - interface responsive.

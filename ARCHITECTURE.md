@@ -142,10 +142,11 @@ membres authentifiés.
 - bénévole assigné : modification limitée au statut de sa tâche par une
   politique et un trigger de contrôle ;
 - responsable : modification des tâches et assignations de ses catégories ;
-- administrateur : gestion des concours, catégories, tâches et supervision des
-  échanges de son concours ;
-- notifications : lecture du propriétaire ou de l'administrateur, marquage lu
-  par le propriétaire ;
+- administrateur : gestion des concours, catégories et tâches ; sa messagerie
+  suit les mêmes règles de confidentialité que celle des autres membres ;
+- messages directs : lecture limitée strictement à l'expéditeur et au
+  destinataire ; le canal général reste visible par tous les membres ;
+- notifications : lecture et marquage limité au propriétaire ;
 - audit : lecture administrateur et insertion par l'acteur concerné.
 
 ### Edge Functions

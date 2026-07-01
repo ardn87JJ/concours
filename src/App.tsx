@@ -1105,6 +1105,8 @@ function MessagingView({ initialConversation = 'general' }: { initialConversatio
   const [mobileChatOpen, setMobileChatOpen] = useState(true)
   const [search, setSearch] = useState('')
   const [text, setText] = useState('')
+  const [sendError, setSendError] = useState('')
+  const [sending, setSending] = useState(false)
   const currentUser = users.find(user => user.id === currentUserId)!
   const isAdmin = currentUser.role === 'admin'
   const contacts = users.filter(user =>
@@ -1139,11 +1141,19 @@ function MessagingView({ initialConversation = 'general' }: { initialConversatio
     else if (!isSupervision) markConversationRead(conversation)
   }, [conversation, isSupervision, markConversationRead])
 
-  const submit = (event: FormEvent) => {
+  const submit = async (event: FormEvent) => {
     event.preventDefault()
-    if (!text.trim() || isSupervision) return
-    sendMessage({ recipientId: conversation === 'general' ? undefined : conversation, text })
-    setText('')
+    if (!text.trim() || isSupervision || sending) return
+    setSending(true)
+    setSendError('')
+    try {
+      await sendMessage({ recipientId: conversation === 'general' ? undefined : conversation, text })
+      setText('')
+    } catch (error) {
+      setSendError(error instanceof Error ? error.message : 'Envoi du message impossible.')
+    } finally {
+      setSending(false)
+    }
   }
 
   const openConversation = (nextConversation: string) => {
@@ -1230,10 +1240,11 @@ function MessagingView({ initialConversation = 'general' }: { initialConversatio
       </div>
       {isSupervision
         ? <div className="message-readonly"><ShieldCheck size={16} /><span>Vue de supervision en lecture seule. Sélectionnez le canal général ou votre propre conversation pour écrire.</span></div>
-        : <form className="message-composer" onSubmit={submit}>
+        : <form className="message-composer" onSubmit={event => { void submit(event) }}>
+          {sendError && <span className="message-send-error">{sendError}</span>}
           <Avatar user={currentUser} size="sm" />
-          <input value={text} onChange={event => setText(event.target.value)} placeholder={conversation === 'general' ? 'Écrire à toute l’équipe…' : `Écrire à ${selectedUser?.name}…`} />
-          <button disabled={!text.trim()} aria-label="Envoyer"><Send size={17} /></button>
+          <input value={text} onChange={event => { setText(event.target.value); setSendError('') }} placeholder={conversation === 'general' ? 'Écrire à toute l’équipe…' : `Écrire à ${selectedUser?.name}…`} />
+          <button disabled={!text.trim() || sending} aria-label="Envoyer"><Send size={17} /></button>
         </form>}
     </div>
   </section>

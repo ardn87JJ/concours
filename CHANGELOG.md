@@ -78,6 +78,9 @@ applicative `0.1.0`.
   supervision indiquent explicitement leur mode lecture seule.
 - la hauteur minimale fixe de la messagerie est supprimée sur ordinateur afin
   que le champ d’envoi reste visible dans les fenêtres de faible hauteur.
+- l’envoi de message attend désormais la réponse Supabase, recharge le message
+  dès son insertion et affiche les erreurs au lieu de les ignorer ; le panneau
+  desktop utilise une colonne flexible indépendante de CSS Grid.
 
 ### Vérifié
 

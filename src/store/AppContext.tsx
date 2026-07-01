@@ -24,7 +24,7 @@ interface AppContextValue extends AppData {
   }>
   updateUser: (id: string, updates: Partial<User>) => void
   deleteUser: (id: string) => void
-  sendMessage: (message: Pick<Message, 'recipientId' | 'text'>) => void
+  sendMessage: (message: Pick<Message, 'recipientId' | 'text'>) => Promise<void>
   markConversationRead: (participantId?: string) => void
   markNotificationRead: (id: string) => void
   markAllNotificationsRead: () => void
@@ -876,72 +876,92 @@ export function AppProvider({ children }: { children: ReactNode }) {
           })],
         }
       }),
-    sendMessage: ({ recipientId, text }: Pick<Message, 'recipientId' | 'text'>) =>
+    sendMessage: async ({ recipientId, text }: Pick<Message, 'recipientId' | 'text'>) => {
+      const messageText = text.trim()
+      if (!messageText) return
+      const id = crypto.randomUUID()
+      const contestId = data.activeContestId
+
+      if (dataBackend === 'supabase') {
+        if (!supabase) throw new Error('Supabase n’est pas configuré.')
+        const { data: { user }, error: userError } = await supabase.auth.getUser()
+        if (userError || !user) throw new Error('Votre session a expiré. Reconnectez-vous.')
+        const senderId = user.id
+        const recipients = recipientId
+          ? [recipientId]
+          : getContestUsers(data).filter(member => member.id !== senderId).map(member => member.id)
+
+        const { error } = await supabase.from('messages').insert({
+          id,
+          contest_id: contestId,
+          sender_id: senderId,
+          recipient_id: recipientId ?? null,
+          text: messageText,
+        })
+        if (error) throw error
+
+        await reloadSupabaseSnapshot()
+
+        const secondaryWrites = [
+          supabase.from('message_reads').insert({
+            message_id: id,
+            user_id: senderId,
+            contest_id: contestId,
+          }),
+          supabase.from('audit_events').insert({
+            id: crypto.randomUUID(),
+            contest_id: contestId,
+            actor_id: senderId,
+            action: 'message',
+            entity_type: 'message',
+            entity_id: id,
+            description: recipientId ? 'a envoyé un message privé' : 'a écrit dans le canal général',
+          }),
+        ]
+        if (recipients.length) {
+          secondaryWrites.push(supabase.from('notifications').insert(recipients.map(userId => ({
+            id: crypto.randomUUID(),
+            contest_id: contestId,
+            user_id: userId,
+            type: 'message' as const,
+            title: recipientId ? 'Nouveau message privé' : 'Nouveau message dans le canal général',
+            text: messageText.slice(0, 90),
+            task_id: null,
+            message_id: id,
+            read_at: null,
+          }))))
+        }
+        const results = await Promise.all(secondaryWrites)
+        const secondaryError = results.find(result => result.error)?.error
+        if (secondaryError) console.error('Écriture secondaire du message incomplète', secondaryError)
+        await reloadSupabaseSnapshot()
+        return
+      }
+
       setData(current => {
-        const id = crypto.randomUUID()
         const recipients = recipientId
           ? [recipientId]
           : getContestUsers(current).filter(user => user.id !== current.currentUserId).map(user => user.id)
-        if (dataBackend === 'supabase') {
-          void (async () => {
-            if (!supabase) return
-            const { error } = await supabase.from('messages').insert({
-              id,
-              contest_id: current.activeContestId,
-              sender_id: current.currentUserId,
-              recipient_id: recipientId ?? null,
-              text: text.trim(),
-            })
-            if (error) return
-            const reads = [{ message_id: id, user_id: current.currentUserId, contest_id: current.activeContestId }]
-            const { error: readError } = await supabase.from('message_reads').insert(reads)
-            if (readError) return
-            if (recipients.length) {
-              const { error: notificationError } = await supabase.from('notifications').insert(recipients.map(userId => ({
-                id: crypto.randomUUID(),
-                contest_id: current.activeContestId,
-                user_id: userId,
-                type: 'message' as const,
-                title: recipientId ? 'Nouveau message privé' : 'Nouveau message dans le canal général',
-                text: text.trim().slice(0, 90),
-                task_id: null,
-                message_id: id,
-                read_at: null,
-              })))
-              if (notificationError) return
-            }
-            await supabase.from('audit_events').insert({
-              id: crypto.randomUUID(),
-              contest_id: current.activeContestId,
-              actor_id: current.currentUserId,
-              action: 'message',
-              entity_type: 'message',
-              entity_id: id,
-              description: recipientId ? 'a envoyé un message privé' : 'a écrit dans le canal général',
-            })
-            await reloadSupabaseSnapshot()
-          })()
-          return current
-        }
         return {
           ...current,
           messages: [...current.messages, {
-          id,
-          contestId: current.activeContestId,
-          senderId: current.currentUserId,
-          recipientId,
-          text: text.trim(),
-          createdAt: new Date().toISOString(),
-          readByIds: [current.currentUserId],
+            id,
+            contestId: current.activeContestId,
+            senderId: current.currentUserId,
+            recipientId,
+            text: messageText,
+            createdAt: new Date().toISOString(),
+            readByIds: [current.currentUserId],
           }],
           notifications: [...current.notifications, ...recipients.map(userId => notify(userId, {
-            type: 'message', title: recipientId ? 'Nouveau message privé' : 'Nouveau message dans le canal général', text: text.trim().slice(0, 90), messageId: id,
+            type: 'message', title: recipientId ? 'Nouveau message privé' : 'Nouveau message dans le canal général', text: messageText.slice(0, 90), messageId: id,
           }))],
           auditLog: [...current.auditLog, audit(current.activeContestId, current.currentUserId, {
             action: 'message', entityType: 'message', entityId: id, description: recipientId ? 'a envoyé un message privé' : 'a écrit dans le canal général',
           })],
         }
-      }),
+      })
+    },
     markConversationRead: (participantId?: string) =>
       setData(current => {
         if (dataBackend === 'supabase') {

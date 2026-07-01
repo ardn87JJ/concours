@@ -85,6 +85,9 @@ applicative `0.1.0`.
   son audit est regroupée dans une fonction SQL transactionnelle ; le
   compositeur est positionné explicitement au bas de toute conversation
   sélectionnée.
+- la ligne Grid implicite de la messagerie est contrainte à la hauteur du
+  panneau, empêchant une longue liste de membres de repousser le compositeur
+  plusieurs écrans plus bas sur ordinateur.
 
 ### Vérifié
 

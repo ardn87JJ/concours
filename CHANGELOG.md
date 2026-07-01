@@ -76,6 +76,8 @@ applicative `0.1.0`.
 - le compositeur de messages reste ancré dans la zone visible sur mobile et
   lorsque le clavier virtuel réduit la hauteur disponible ; les vues de
   supervision indiquent explicitement leur mode lecture seule.
+- la hauteur minimale fixe de la messagerie est supprimée sur ordinateur afin
+  que le champ d’envoi reste visible dans les fenêtres de faible hauteur.
 
 ### Vérifié
 
